@@ -1,0 +1,49 @@
+name: Sync training data from OneDrive
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [onedrive_training_updated]
+  schedule:
+    - cron: "*/30 * * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download current Word record from OneDrive
+        env:
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_CLIENT_SECRET: ${{ secrets.MS_CLIENT_SECRET }}
+          MS_REFRESH_TOKEN: ${{ secrets.MS_REFRESH_TOKEN }}
+          ONEDRIVE_DOCX_PATH: ${{ vars.ONEDRIVE_DOCX_PATH }}
+        run: |
+          python training-dashboard/scripts/download_onedrive_docx.py --output current-training.docx
+
+      - name: Parse Word record and update dashboard data
+        run: |
+          python training-dashboard/scripts/sync_from_docx.py \
+            --docx current-training.docx \
+            --data-json training-dashboard/data/training-data.json \
+            --data-js training-dashboard/data/training-data.js
+
+      - name: Commit updated training data
+        run: |
+          if git diff --quiet -- training-dashboard/data; then
+            echo "No training data changes."
+            exit 0
+          fi
+          git config user.name "training-data-bot"
+          git config user.email "training-data-bot@users.noreply.github.com"
+          git add training-dashboard/data/training-data.json training-dashboard/data/training-data.js
+          git commit -m "Update training data from OneDrive"
+          git push

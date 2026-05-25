@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kaihao Training Tracker</title>
+    <link rel="stylesheet" href="./styles.css?v=20260525-pan-only">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="训练导航">
+        <div class="brand">
+          <div class="brand-mark">K</div>
+          <div>
+            <p class="brand-kicker">Kaihao</p>
+            <h1>Training Tracker</h1>
+          </div>
+        </div>
+
+        <nav class="nav-tabs" aria-label="页面">
+          <button class="nav-button active" type="button" data-view="overview" aria-pressed="true">
+            <span class="icon">◆</span>
+            <span>总览</span>
+          </button>
+          <button class="nav-button" type="button" data-view="progress" aria-pressed="false">
+            <span class="icon">↗</span>
+            <span>进步</span>
+          </button>
+          <button class="nav-button" type="button" data-view="sessions" aria-pressed="false">
+            <span class="icon">≡</span>
+            <span>记录</span>
+          </button>
+        </nav>
+
+        <section class="source-panel">
+          <p class="label">当前记录</p>
+          <p class="source-file">00_当前Cycle训练记录.docx</p>
+          <p class="sync-state">最新：2026-05-25 · Cycle 10 Day 1</p>
+        </section>
+      </aside>
+
+      <main class="content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">恢复推进期</p>
+            <h2>训练进步仪表盘</h2>
+          </div>
+          <div class="cycle-switch" role="group" aria-label="周期筛选">
+            <button type="button" class="chip active" data-cycle="all">全部</button>
+            <button type="button" class="chip" data-cycle="return">回归</button>
+            <button type="button" class="chip" data-cycle="latest">最新</button>
+          </div>
+        </header>
+
+        <section class="view active" id="overview" aria-label="总览">
+          <div class="metric-grid" id="metricGrid"></div>
+
+          <section class="dashboard-grid">
+            <article class="panel wide">
+              <div class="panel-header">
+                <div>
+                  <p class="label">主项趋势</p>
+                  <h3>卧推、深蹲、下拉、推肩</h3>
+                </div>
+                <div class="chart-toolbar">
+                  <select id="mainChartMode" aria-label="主项图表指标">
+                    <option value="load">工作重量</option>
+                    <option value="estimated">估算强度</option>
+                  </select>
+                  <div class="chart-actions" aria-label="主项图表滑动">
+                    <button type="button" data-chart="mainLiftChart" data-action="panLeft" title="向左查看更早记录">←</button>
+                    <button type="button" data-chart="mainLiftChart" data-action="panRight" title="向右查看更新记录">→</button>
+                    <button type="button" data-chart="mainLiftChart" data-action="latest" title="回到最新">最新</button>
+                  </div>
+                </div>
+              </div>
+              <canvas id="mainLiftChart" height="240" aria-label="主项趋势图"></canvas>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="label">体重</p>
+                  <h3>4.4 → 5.25</h3>
+                </div>
+                <div class="chart-toolbar">
+                  <span class="pill positive">+1.65kg</span>
+                  <div class="chart-actions" aria-label="体重图表滑动">
+                    <button type="button" data-chart="bodyweightChart" data-action="panLeft" title="向左查看更早记录">←</button>
+                    <button type="button" data-chart="bodyweightChart" data-action="panRight" title="向右查看更新记录">→</button>
+                    <button type="button" data-chart="bodyweightChart" data-action="latest" title="回到最新">最新</button>
+                  </div>
+                </div>
+              </div>
+              <canvas id="bodyweightChart" height="240" aria-label="体重趋势图"></canvas>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="label">本周状态</p>
+                  <h3>最新 Cycle 观察</h3>
+                </div>
+              </div>
+              <div class="watch-list" id="watchList"></div>
+            </article>
+
+            <article class="panel wide">
+              <div class="panel-header">
+                <div>
+                  <p class="label">训练分布</p>
+                  <h3>三分化执行节奏</h3>
+                </div>
+              </div>
+              <div class="split-visual" id="splitVisual"></div>
+            </article>
+          </section>
+        </section>
+
+        <section class="view" id="progress" aria-label="动作进步">
+          <div class="toolbar">
+            <div class="segmented" role="group" aria-label="动作选择" id="exerciseTabs"></div>
+            <select id="progressMetric" aria-label="进步指标">
+              <option value="load">重量</option>
+              <option value="reps">次数</option>
+              <option value="estimated">估算强度</option>
+            </select>
+          </div>
+
+          <section class="progress-layout">
+            <article class="panel wide">
+              <div class="panel-header">
+                <div>
+                  <p class="label" id="exerciseDay">胸日 + 二头</p>
+                  <h3 id="exerciseTitle">平板卧推</h3>
+                </div>
+                <div class="chart-toolbar">
+                  <span class="pill" id="exerciseStatus">稳定推进</span>
+                  <div class="chart-actions" aria-label="动作图表滑动">
+                    <button type="button" data-chart="exerciseChart" data-action="panLeft" title="向左查看更早记录">←</button>
+                    <button type="button" data-chart="exerciseChart" data-action="panRight" title="向右查看更新记录">→</button>
+                    <button type="button" data-chart="exerciseChart" data-action="latest" title="回到最新">最新</button>
+                  </div>
+                </div>
+              </div>
+              <canvas id="exerciseChart" height="300" aria-label="动作趋势图"></canvas>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="label">最近表现</p>
+                  <h3 id="latestSetTitle">60 × 8</h3>
+                </div>
+              </div>
+              <div class="exercise-detail" id="exerciseDetail"></div>
+            </article>
+          </section>
+
+          <section class="insight-strip" id="exerciseInsights" aria-label="关键变化"></section>
+        </section>
+
+        <section class="view" id="sessions" aria-label="训练记录">
+          <div class="session-list" id="sessionList"></div>
+        </section>
+      </main>
+    </div>
+
+    <div class="detail-modal" id="evaluationModal" aria-hidden="true">
+      <div class="detail-backdrop" data-close-evaluation></div>
+      <article class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="evaluationTitle">
+        <button class="detail-close" type="button" data-close-evaluation aria-label="关闭">×</button>
+        <p class="label" id="evaluationLabel">训练评价</p>
+        <h2 id="evaluationTitle">评价标题</h2>
+        <p class="detail-summary" id="evaluationSummary"></p>
+        <div class="detail-chart-wrap" id="detailChartWrap">
+          <canvas id="detailTrendChart" height="260" aria-label="详细趋势图"></canvas>
+        </div>
+        <div class="detail-sections" id="evaluationSections"></div>
+      </article>
+    </div>
+
+    <script src="./data/training-data.js?v=20260525-data-split"></script>
+    <script src="./app.js?v=20260525-data-split"></script>
+  </body>
+</html>

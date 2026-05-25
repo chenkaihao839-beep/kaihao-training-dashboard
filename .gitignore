@@ -1,0 +1,10 @@
+.DS_Store
+.pycache/
+__pycache__/
+current-training.docx
+*.docx
+*.pdf
+01_历史记录/
+02_下个Cycle计划/
+99_参考资料/
+README_训练记录工作流.md
