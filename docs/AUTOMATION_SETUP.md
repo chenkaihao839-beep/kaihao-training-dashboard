@@ -39,6 +39,32 @@ OneDrive / Word
 训练/00_当前Cycle训练记录.docx
 ```
 
+## 获取 Microsoft refresh token
+
+先在 Microsoft Entra / Azure App registrations 创建一个应用：
+
+1. Redirect URI 加：`http://localhost`
+2. API permissions 加 Microsoft Graph delegated permission：`Files.Read`
+3. 创建 client secret
+
+生成授权 URL：
+
+```bash
+python training-dashboard/scripts/get_microsoft_refresh_token.py \
+  --client-id "<MS_CLIENT_ID>"
+```
+
+打开输出的 URL，登录并同意权限。浏览器跳到 `http://localhost/?code=...` 后，复制 `code` 参数，再执行：
+
+```bash
+python training-dashboard/scripts/get_microsoft_refresh_token.py \
+  --client-id "<MS_CLIENT_ID>" \
+  --client-secret "<MS_CLIENT_SECRET>" \
+  --code "<AUTH_CODE_FROM_CALLBACK>"
+```
+
+输出里的 `refresh_token` 就是 GitHub Secret `MS_REFRESH_TOKEN`。
+
 ## Microsoft Graph 权限
 
 Azure / Microsoft Entra 应用需要请求：
