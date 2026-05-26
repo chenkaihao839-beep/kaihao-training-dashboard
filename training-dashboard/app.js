@@ -462,6 +462,11 @@ function suggestedWorkoutCycle() {
   return cycleProgress(current).isComplete ? nextCycleName() : current;
 }
 
+function suggestedWorkoutTemplateId() {
+  const progress = cycleProgress(latestCycleName());
+  return progress.missingDays[0]?.key || WORKOUT_TEMPLATES[0].id;
+}
+
 function latestExerciseRecord(key) {
   if (!trainingData.exercises[key]) return null;
   return getRecords(key).at(-1);
@@ -540,7 +545,7 @@ function defaultExerciseSets(exercise) {
   }));
 }
 
-function createWorkoutDraft(templateId = WORKOUT_TEMPLATES[0].id) {
+function createWorkoutDraft(templateId = suggestedWorkoutTemplateId()) {
   const template = templateById(templateId);
   return {
     id: `draft-${Date.now()}`,
@@ -564,15 +569,20 @@ function createWorkoutDraft(templateId = WORKOUT_TEMPLATES[0].id) {
   };
 }
 
+function workoutDraftHasStarted(draft) {
+  return Boolean(draft?.notes || draft?.exercises?.some((exercise) => {
+    return exercise.sets?.some((set) => set.done || set.note);
+  }));
+}
+
 function loadWorkoutDraft() {
   try {
     const draft = JSON.parse(localStorage.getItem(WORKOUT_DRAFT_KEY) || "null");
     if (!draft) return createWorkoutDraft();
-    const hasStarted = draft.notes || draft.exercises?.some((exercise) => {
-      return exercise.sets?.some((set) => set.done || set.note);
-    });
+    const hasStarted = workoutDraftHasStarted(draft);
+    const suggestedTemplateId = suggestedWorkoutTemplateId();
     if (draft.planVersion !== WORKOUT_PLAN_VERSION && !hasStarted) {
-      const fresh = createWorkoutDraft(draft.templateId);
+      const fresh = createWorkoutDraft(suggestedTemplateId);
       return {
         ...fresh,
         id: draft.id || fresh.id,
@@ -583,6 +593,9 @@ function loadWorkoutDraft() {
         duration: draft.duration || fresh.duration,
         notes: draft.notes || fresh.notes
       };
+    }
+    if (draft.templateId !== suggestedTemplateId && !hasStarted) {
+      return createWorkoutDraft(suggestedTemplateId);
     }
     return draft;
   } catch {
@@ -598,6 +611,15 @@ function storeWorkoutDraft(draft) {
 function clearWorkoutDraft() {
   localStorage.removeItem(WORKOUT_DRAFT_KEY);
   workoutDraft = createWorkoutDraft();
+  storeWorkoutDraft(workoutDraft);
+}
+
+function alignWorkoutDraftToCycleProgress() {
+  if (!workoutDraft || workoutDraftHasStarted(workoutDraft)) return;
+  const suggestedTemplateId = suggestedWorkoutTemplateId();
+  const suggestedCycle = suggestedWorkoutCycle();
+  if (workoutDraft.templateId === suggestedTemplateId && workoutDraft.cycle === suggestedCycle) return;
+  workoutDraft = createWorkoutDraft(suggestedTemplateId);
   storeWorkoutDraft(workoutDraft);
 }
 
@@ -2181,6 +2203,7 @@ async function init() {
   await loadOneDriveReviews();
   await loadOneDriveWorkoutLogs();
   mergeWorkoutLogsIntoTrainingData();
+  alignWorkoutDraftToCycleProgress();
   document.getElementById("progressMetric").value = defaultMetricForExercise(selectedExercise);
   renderMetrics();
   renderWatchList();
