@@ -797,7 +797,6 @@ function refreshDashboardAfterEntry() {
   renderMetrics();
   renderWatchList();
   renderCycleReview();
-  renderSplitVisual();
   renderExerciseTabs();
   renderSessions();
   renderExerciseView();
@@ -1705,21 +1704,6 @@ function openMetricDetail(id) {
   });
 }
 
-function renderSplitVisual() {
-  const blocks = [
-    { title: "胸日 + 二头", text: "卧推主线 · 上斜稳定 · 夹胸收缩 · 二头补充" },
-    { title: "背日 + 三头", text: "引体质量 · 高位下拉 · 划船厚度 · 绳索三头" },
-    { title: "肩腿日 + 腹", text: "深蹲/RDL · 单腿稳定 · 推肩保守 · 核心收尾" }
-  ];
-
-  document.getElementById("splitVisual").innerHTML = blocks.map((block) => `
-    <div class="split-block">
-      <strong>${block.title}</strong>
-      <span>${block.text}</span>
-    </div>
-  `).join("");
-}
-
 function renderExerciseTabs() {
   const tabs = Object.entries(trainingData.exercises).map(([key, exercise]) => `
     <button type="button" class="${key === selectedExercise ? "active" : ""}" data-exercise="${key}">${exercise.name}</button>
@@ -1800,6 +1784,7 @@ function renderEntryView() {
   if (!consoleEl || !historyEl) return;
 
   workoutDraft = workoutDraft || loadWorkoutDraft();
+  workoutDraft.cycle = suggestedWorkoutCycle();
   const template = templateById(workoutDraft.templateId);
   const completedSetCount = workoutDraft.exercises.reduce((total, exercise) => {
     return total + exercise.sets.filter((set) => set.done).length;
@@ -1840,10 +1825,10 @@ function renderEntryView() {
             <span>日期</span>
             <input type="date" name="date" value="${escapeHtml(workoutDraft.date)}">
           </label>
-          <label>
+          <div class="entry-cycle-field">
             <span>Cycle</span>
-            <input type="text" name="cycle" value="${escapeHtml(workoutDraft.cycle)}">
-          </label>
+            <strong>${escapeHtml(workoutDraft.cycle)}</strong>
+          </div>
           <label>
             <span>体重 kg</span>
             <input type="number" step="0.05" name="bodyweight" value="${escapeHtml(workoutDraft.bodyweight)}">
@@ -1923,7 +1908,7 @@ function updateWorkoutDraftFromForm() {
   if (!form || !workoutDraft) return;
   const formData = new FormData(form);
   workoutDraft.date = formData.get("date") || todayISO();
-  workoutDraft.cycle = formData.get("cycle") || suggestedWorkoutCycle();
+  workoutDraft.cycle = suggestedWorkoutCycle();
   workoutDraft.bodyweight = formData.get("bodyweight") || "";
   workoutDraft.sleep = formData.get("sleep") || "";
   workoutDraft.duration = formData.get("duration") || "";
@@ -2208,7 +2193,6 @@ async function init() {
   renderMetrics();
   renderWatchList();
   renderCycleReview();
-  renderSplitVisual();
   renderEntryView();
   renderExerciseTabs();
   renderSessions();

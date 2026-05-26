@@ -685,44 +685,6 @@ canvas:active {
   line-height: 1.65;
 }
 
-.split-visual {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.split-block {
-  min-height: 142px;
-  border-radius: 8px;
-  padding: 14px;
-  color: #fff;
-  display: grid;
-  align-content: space-between;
-}
-
-.split-block:nth-child(1) {
-  background: var(--teal);
-}
-
-.split-block:nth-child(2) {
-  background: var(--blue);
-}
-
-.split-block:nth-child(3) {
-  background: var(--coral);
-}
-
-.split-block strong {
-  font-size: 19px;
-}
-
-.split-block span {
-  display: block;
-  opacity: 0.9;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
 .toolbar {
   display: flex;
   align-items: center;
@@ -788,12 +750,14 @@ canvas:active {
 }
 
 .entry-meta-grid label,
+.entry-cycle-field,
 .entry-notes {
   display: grid;
   gap: 6px;
 }
 
 .entry-meta-grid span,
+.entry-cycle-field span,
 .entry-notes span {
   color: var(--muted);
   font-size: 12px;
@@ -801,6 +765,7 @@ canvas:active {
 }
 
 .entry-meta-grid input,
+.entry-cycle-field strong,
 .set-grid input,
 .entry-notes textarea {
   width: 100%;
@@ -810,6 +775,13 @@ canvas:active {
   background: #fff;
   color: var(--ink);
   padding: 8px 10px;
+}
+
+.entry-cycle-field strong {
+  display: flex;
+  align-items: center;
+  background: var(--surface-soft);
+  font-size: 14px;
 }
 
 .entry-notes textarea {
@@ -1190,7 +1162,6 @@ canvas:active {
   }
 
   .metric-grid,
-  .split-visual,
   .cycle-status,
   .cycle-fields,
   .template-row,
@@ -1241,6 +1212,7 @@ canvas:active {
   }
 
   .entry-meta-grid input,
+  .entry-cycle-field strong,
   .set-grid input,
   .entry-notes textarea,
   .set-note {
