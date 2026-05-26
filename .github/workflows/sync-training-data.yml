@@ -14,9 +14,18 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: training-sync
+  cancel-in-progress: true
 
 jobs:
   sync:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,3 +61,14 @@ jobs:
           git add training-dashboard/data/training-data.json training-dashboard/data/training-data.js
           git commit -m "Update training data from OneDrive"
           git push
+
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: training-dashboard
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
