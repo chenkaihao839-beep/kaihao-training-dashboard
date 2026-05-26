@@ -78,6 +78,7 @@ const REVIEW_LOCAL_PREFIX = "kaihao-cycle-review-";
 const REVIEW_TOKEN_KEY = "kaihao-onedrive-review-token";
 const WORKOUT_LOG_KEY = "kaihao-workout-logs";
 const WORKOUT_DRAFT_KEY = "kaihao-workout-draft";
+const WORKOUT_PLAN_VERSION = "20260526-mobile-plan";
 let cycleReviewsCache = {};
 let workoutLogCache = { workouts: [] };
 let workoutDraft = null;
@@ -452,14 +453,69 @@ function latestExerciseRecord(key) {
   return getRecords(key).at(-1);
 }
 
-function defaultExerciseSets(exercise) {
+function expandSetPlan(load, reps, count) {
+  const total = Math.max(1, Number(count) || 1);
+  return Array.from({ length: total }, () => ({ load, reps }));
+}
+
+function plannedExerciseSets(exercise) {
+  const goal = trainingData.exercises[exercise.key]?.goal || "";
   const latest = latestExerciseRecord(exercise.key);
-  const load = exercise.unit === "次" ? "" : latest?.load ?? "";
-  const reps = exercise.unit === "次" ? latest?.reps ?? "" : latest?.reps ?? "";
+  const fallbackLoad = exercise.unit === "次" ? "" : latest?.load ?? "";
+  const fallbackReps = latest?.reps ?? "";
+  const plan = [];
+
+  for (const match of goal.matchAll(/(\d+(?:\.\d+)?)\s*(?:kg)?\s*[×x]\s*(\d+)\s*[×x]\s*(\d+)/gi)) {
+    plan.push(...expandSetPlan(Number(match[1]), Number(match[2]), Number(match[3])));
+  }
+
+  if (!plan.length && exercise.unit === "次") {
+    const repsSequence = goal.match(/\b(\d+(?:\/\d+)+)\b/);
+    if (repsSequence) {
+      return repsSequence[1].split("/").map((reps) => ({ load: fallbackLoad, reps: Number(reps) }));
+    }
+  }
+
+  if (!plan.length) {
+    const loadSequence = goal.match(/\b(\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)+)\b/);
+    if (loadSequence) {
+      return loadSequence[1].split("/").map((load) => ({ load: Number(load), reps: fallbackReps }));
+    }
+  }
+
+  if (!plan.length) {
+    const kgWithReps = goal.match(/(\d+(?:\.\d+)?)\s*kg.*?(\d+)\s*[×x]\s*(\d+)/i);
+    if (kgWithReps) {
+      plan.push(...expandSetPlan(Number(kgWithReps[1]), Number(kgWithReps[2]), Number(kgWithReps[3])));
+    }
+  }
+
+  if (!plan.length) {
+    const kgWithChineseSets = goal.match(/(\d+(?:\.\d+)?)\s*kg.*?三组\s*(\d+)/);
+    if (kgWithChineseSets) {
+      plan.push(...expandSetPlan(Number(kgWithChineseSets[1]), Number(kgWithChineseSets[2]), 3));
+    }
+  }
+
+  if (!plan.length) {
+    const stableLoad = goal.match(/等\s*(\d+(?:\.\d+)?)\s*kg/);
+    const firstLoad = goal.match(/(\d+(?:\.\d+)?)\s*kg/);
+    const load = stableLoad?.[1] ?? firstLoad?.[1] ?? fallbackLoad;
+    return expandSetPlan(load === "" ? "" : Number(load), fallbackReps, exercise.sets);
+  }
+
+  return plan;
+}
+
+function defaultExerciseSets(exercise) {
+  const plan = plannedExerciseSets(exercise);
+  const latest = latestExerciseRecord(exercise.key);
+  const fallbackLoad = exercise.unit === "次" ? "" : latest?.load ?? "";
+  const fallbackReps = latest?.reps ?? "";
   return Array.from({ length: exercise.sets }, (_, index) => ({
     index: index + 1,
-    load,
-    reps,
+    load: plan[index]?.load ?? plan.at(-1)?.load ?? fallbackLoad,
+    reps: plan[index]?.reps ?? plan.at(-1)?.reps ?? fallbackReps,
     done: false,
     note: ""
   }));
@@ -477,6 +533,7 @@ function createWorkoutDraft(templateId = WORKOUT_TEMPLATES[0].id) {
     sleep: "",
     duration: "",
     notes: "",
+    planVersion: WORKOUT_PLAN_VERSION,
     exercises: template.exercises.map((exercise) => ({
       key: exercise.key,
       name: exercise.name,
@@ -491,7 +548,24 @@ function createWorkoutDraft(templateId = WORKOUT_TEMPLATES[0].id) {
 function loadWorkoutDraft() {
   try {
     const draft = JSON.parse(localStorage.getItem(WORKOUT_DRAFT_KEY) || "null");
-    return draft || createWorkoutDraft();
+    if (!draft) return createWorkoutDraft();
+    const hasStarted = draft.notes || draft.exercises?.some((exercise) => {
+      return exercise.sets?.some((set) => set.done || set.note);
+    });
+    if (draft.planVersion !== WORKOUT_PLAN_VERSION && !hasStarted) {
+      const fresh = createWorkoutDraft(draft.templateId);
+      return {
+        ...fresh,
+        id: draft.id || fresh.id,
+        date: draft.date || fresh.date,
+        cycle: draft.cycle || fresh.cycle,
+        bodyweight: draft.bodyweight || fresh.bodyweight,
+        sleep: draft.sleep || fresh.sleep,
+        duration: draft.duration || fresh.duration,
+        notes: draft.notes || fresh.notes
+      };
+    }
+    return draft;
   } catch {
     return createWorkoutDraft();
   }
@@ -1755,6 +1829,7 @@ function renderEntryView() {
                 <span>${exercise.unit === "次" ? "负重" : "重量"}</span>
                 <span>次数</span>
                 <span>完成</span>
+                <span></span>
               </div>
               ${exercise.sets.map((set, setIndex) => `
                 <div class="set-grid">
@@ -1765,6 +1840,7 @@ function renderEntryView() {
                     <input type="checkbox" data-field="done" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" ${set.done ? "checked" : ""}>
                     <span></span>
                   </label>
+                  <button type="button" class="delete-set-action" data-workout-action="deleteSet" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" ${exercise.sets.length <= 1 ? "disabled" : ""} title="删除这一组">×</button>
                   <input class="set-note" type="text" data-field="note" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" value="${escapeHtml(set.note)}" placeholder="备注">
                 </div>
               `).join("")}
@@ -1841,6 +1917,16 @@ function addWorkoutSet(exerciseIndex) {
     done: false,
     note: ""
   });
+  storeWorkoutDraft(workoutDraft);
+  renderEntryView();
+}
+
+function deleteWorkoutSet(exerciseIndex, setIndex) {
+  updateWorkoutDraftFromForm();
+  const exercise = workoutDraft.exercises[exerciseIndex];
+  if (!exercise || exercise.sets.length <= 1) return;
+  exercise.sets.splice(setIndex, 1);
+  exercise.sets = exercise.sets.map((set, index) => ({ ...set, index: index + 1 }));
   storeWorkoutDraft(workoutDraft);
   renderEntryView();
 }
@@ -2000,6 +2086,10 @@ function bindEvents() {
     }
     if (actionButton.dataset.workoutAction === "addSet") {
       addWorkoutSet(Number(actionButton.dataset.exerciseIndex));
+      return;
+    }
+    if (actionButton.dataset.workoutAction === "deleteSet") {
+      deleteWorkoutSet(Number(actionButton.dataset.exerciseIndex), Number(actionButton.dataset.setIndex));
     }
   });
 
