@@ -1,6 +1,11 @@
 name: Sync training data from OneDrive
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/sync-training-data.yml"
+      - "training-dashboard/scripts/**"
   workflow_dispatch:
   repository_dispatch:
     types: [onedrive_training_updated]
