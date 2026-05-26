@@ -2017,9 +2017,8 @@ function renderSessions() {
 }
 
 function resetHorizontalScroll() {
-  document.documentElement.scrollLeft = 0;
-  document.body.scrollLeft = 0;
-  if (window.scrollX) window.scrollTo(0, window.scrollY);
+  if (document.documentElement.scrollLeft) document.documentElement.scrollLeft = 0;
+  if (document.body.scrollLeft) document.body.scrollLeft = 0;
 }
 
 function bindEvents() {
@@ -2183,8 +2182,6 @@ function bindEvents() {
     clearTimeout(window.__chartResizeTimer);
     window.__chartResizeTimer = setTimeout(redrawCharts, 120);
   });
-
-  window.addEventListener("scroll", resetHorizontalScroll, { passive: true });
 }
 
 function redrawCharts() {
