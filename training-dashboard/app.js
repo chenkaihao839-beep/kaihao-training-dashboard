@@ -26,11 +26,25 @@ const colors = {
 let selectedExercise = "bench";
 let currentCycleFilter = "all";
 const chartStore = {};
+const ONEDRIVE_REVIEW_SYNC = {
+  clientId: "2cb029da-2da0-4ba3-9a92-ce990669c646",
+  tenant: "common",
+  filePath: "/训练/cycle-reviews.json",
+  scopes: ["Files.ReadWrite", "offline_access"]
+};
 const CYCLE_DAYS = [
   { key: "chest", label: "胸日" },
   { key: "back", label: "背日" },
   { key: "shoulderLeg", label: "肩腿日" }
 ];
+const REVIEW_LOCAL_PREFIX = "kaihao-cycle-review-";
+const REVIEW_TOKEN_KEY = "kaihao-onedrive-review-token";
+let cycleReviewsCache = {};
+let oneDriveReviewState = {
+  status: "local",
+  message: "本机保存",
+  busy: false
+};
 
 function defaultMetricForExercise(key) {
   return key === "pullup" ? "reps" : "load";
@@ -79,10 +93,11 @@ function getCycleSessions(cycle) {
 }
 
 function getCycleReviewKey(cycle) {
-  return `kaihao-cycle-review-${cycle}`;
+  return `${REVIEW_LOCAL_PREFIX}${cycle}`;
 }
 
 function getStoredCycleReview(cycle) {
+  if (cycleReviewsCache[cycle]) return cycleReviewsCache[cycle];
   try {
     return JSON.parse(localStorage.getItem(getCycleReviewKey(cycle)) || "{}");
   } catch {
@@ -91,7 +106,271 @@ function getStoredCycleReview(cycle) {
 }
 
 function storeCycleReview(cycle, review) {
-  localStorage.setItem(getCycleReviewKey(cycle), JSON.stringify(review));
+  const storedReview = {
+    ...review,
+    updatedAt: review.updatedAt || new Date().toISOString()
+  };
+  cycleReviewsCache[cycle] = storedReview;
+  localStorage.setItem(getCycleReviewKey(cycle), JSON.stringify(storedReview));
+}
+
+function localCycleReviews() {
+  const reviews = {};
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith(REVIEW_LOCAL_PREFIX))
+    .forEach((key) => {
+      try {
+        const cycle = key.slice(REVIEW_LOCAL_PREFIX.length);
+        reviews[cycle] = JSON.parse(localStorage.getItem(key) || "{}");
+      } catch {
+        // Ignore malformed old local review data.
+      }
+    });
+  return reviews;
+}
+
+function mergeCycleReviews(localReviews, remoteReviews) {
+  const merged = { ...remoteReviews };
+  Object.entries(localReviews).forEach(([cycle, review]) => {
+    const remote = merged[cycle];
+    const localTime = Date.parse(review.updatedAt || review.generatedAt || 0);
+    const remoteTime = Date.parse(remote?.updatedAt || remote?.generatedAt || 0);
+    if (!remote || localTime >= remoteTime) {
+      merged[cycle] = review;
+    }
+  });
+  return merged;
+}
+
+function persistCycleReviews(reviews) {
+  cycleReviewsCache = reviews;
+  Object.entries(reviews).forEach(([cycle, review]) => {
+    localStorage.setItem(getCycleReviewKey(cycle), JSON.stringify(review));
+  });
+}
+
+function oneDriveRedirectUri() {
+  return `${location.origin}${location.pathname}`;
+}
+
+function oneDriveTokenUrl() {
+  return `https://login.microsoftonline.com/${ONEDRIVE_REVIEW_SYNC.tenant}/oauth2/v2.0/token`;
+}
+
+function oneDriveReviewPathUrl() {
+  const encodedPath = ONEDRIVE_REVIEW_SYNC.filePath
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  return `https://graph.microsoft.com/v1.0/me/drive/root:/${encodedPath}:/content`;
+}
+
+function base64UrlEncode(bytes) {
+  const binary = Array.from(new Uint8Array(bytes))
+    .map((byte) => String.fromCharCode(byte))
+    .join("");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function randomCodeVerifier() {
+  const bytes = new Uint8Array(48);
+  crypto.getRandomValues(bytes);
+  return base64UrlEncode(bytes);
+}
+
+async function codeChallenge(verifier) {
+  const bytes = new TextEncoder().encode(verifier);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return base64UrlEncode(digest);
+}
+
+function getOneDriveToken() {
+  try {
+    return JSON.parse(localStorage.getItem(REVIEW_TOKEN_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function setOneDriveToken(payload) {
+  const expiresIn = Number(payload.expires_in || 3600);
+  const existing = getOneDriveToken();
+  const token = {
+    accessToken: payload.access_token,
+    refreshToken: payload.refresh_token || existing.refreshToken,
+    expiresAt: Date.now() + Math.max(60, expiresIn - 90) * 1000
+  };
+  localStorage.setItem(REVIEW_TOKEN_KEY, JSON.stringify(token));
+  return token;
+}
+
+function isOneDriveConnected() {
+  const token = getOneDriveToken();
+  return Boolean(token.accessToken || token.refreshToken);
+}
+
+async function refreshOneDriveToken() {
+  const token = getOneDriveToken();
+  if (token.accessToken && token.expiresAt > Date.now()) return token.accessToken;
+  if (!token.refreshToken) return null;
+
+  const body = new URLSearchParams({
+    client_id: ONEDRIVE_REVIEW_SYNC.clientId,
+    grant_type: "refresh_token",
+    refresh_token: token.refreshToken,
+    scope: ONEDRIVE_REVIEW_SYNC.scopes.join(" ")
+  });
+  const response = await fetch(oneDriveTokenUrl(), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body
+  });
+  if (!response.ok) return null;
+  const payload = await response.json();
+  return setOneDriveToken(payload).accessToken;
+}
+
+async function startOneDriveLogin() {
+  if (location.protocol === "file:") {
+    oneDriveReviewState = { status: "local", message: "线上网站可连接 OneDrive", busy: false };
+    renderCycleReview();
+    return;
+  }
+
+  const verifier = randomCodeVerifier();
+  const challenge = await codeChallenge(verifier);
+  const state = randomCodeVerifier();
+  sessionStorage.setItem("kaihao-onedrive-code-verifier", verifier);
+  sessionStorage.setItem("kaihao-onedrive-auth-state", state);
+
+  const params = new URLSearchParams({
+    client_id: ONEDRIVE_REVIEW_SYNC.clientId,
+    response_type: "code",
+    redirect_uri: oneDriveRedirectUri(),
+    response_mode: "query",
+    scope: ONEDRIVE_REVIEW_SYNC.scopes.join(" "),
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    state
+  });
+  location.href = `https://login.microsoftonline.com/${ONEDRIVE_REVIEW_SYNC.tenant}/oauth2/v2.0/authorize?${params}`;
+}
+
+async function completeOneDriveLogin() {
+  const params = new URLSearchParams(location.search);
+  const code = params.get("code");
+  const state = params.get("state");
+  if (!code) return false;
+
+  const expectedState = sessionStorage.getItem("kaihao-onedrive-auth-state");
+  const verifier = sessionStorage.getItem("kaihao-onedrive-code-verifier");
+  history.replaceState({}, document.title, oneDriveRedirectUri());
+
+  if (!verifier || state !== expectedState) {
+    oneDriveReviewState = { status: "error", message: "OneDrive 登录状态不匹配", busy: false };
+    return true;
+  }
+
+  oneDriveReviewState = { status: "syncing", message: "正在连接 OneDrive", busy: true };
+  const body = new URLSearchParams({
+    client_id: ONEDRIVE_REVIEW_SYNC.clientId,
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: oneDriveRedirectUri(),
+    code_verifier: verifier,
+    scope: ONEDRIVE_REVIEW_SYNC.scopes.join(" ")
+  });
+
+  try {
+    const response = await fetch(oneDriveTokenUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    });
+    if (!response.ok) throw new Error("token_exchange_failed");
+    setOneDriveToken(await response.json());
+    sessionStorage.removeItem("kaihao-onedrive-code-verifier");
+    sessionStorage.removeItem("kaihao-onedrive-auth-state");
+    await loadOneDriveReviews();
+  } catch {
+    oneDriveReviewState = { status: "error", message: "OneDrive 授权失败", busy: false };
+  }
+  return true;
+}
+
+async function graphRequest(url, options = {}) {
+  const accessToken = await refreshOneDriveToken();
+  if (!accessToken) throw new Error("missing_token");
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+}
+
+async function loadOneDriveReviews() {
+  if (!isOneDriveConnected()) {
+    cycleReviewsCache = localCycleReviews();
+    return;
+  }
+
+  oneDriveReviewState = { status: "syncing", message: "正在读取 OneDrive", busy: true };
+  renderCycleReview();
+
+  try {
+    const response = await graphRequest(oneDriveReviewPathUrl(), { cache: "no-store" });
+    let remoteReviews = {};
+    if (response.ok) {
+      const payload = await response.json();
+      remoteReviews = payload.reviews || {};
+    } else if (response.status !== 404) {
+      throw new Error("onedrive_read_failed");
+    }
+
+    const merged = mergeCycleReviews(localCycleReviews(), remoteReviews);
+    persistCycleReviews(merged);
+    if (JSON.stringify(merged) !== JSON.stringify(remoteReviews)) {
+      await saveOneDriveReviews();
+      return;
+    }
+    oneDriveReviewState = { status: "connected", message: "OneDrive 已同步", busy: false };
+  } catch {
+    oneDriveReviewState = { status: "error", message: "OneDrive 读取失败，已保存在本机", busy: false };
+    cycleReviewsCache = localCycleReviews();
+  }
+  renderCycleReview();
+}
+
+async function saveOneDriveReviews() {
+  if (!isOneDriveConnected()) return;
+
+  oneDriveReviewState = { status: "syncing", message: "正在同步 OneDrive", busy: true };
+  renderCycleReview();
+
+  const payload = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    reviews: { ...cycleReviewsCache }
+  };
+
+  try {
+    const response = await graphRequest(oneDriveReviewPathUrl(), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload, null, 2)
+    });
+    if (!response.ok) throw new Error("onedrive_write_failed");
+    oneDriveReviewState = { status: "connected", message: "OneDrive 已同步", busy: false };
+  } catch {
+    oneDriveReviewState = { status: "error", message: "OneDrive 同步失败，已保存在本机", busy: false };
+  }
+  renderCycleReview();
 }
 
 function cycleProgress(cycle) {
@@ -789,6 +1068,11 @@ function renderCycleReview() {
     }
   ];
   const advice = review.generatedAt ? generateCycleAdvice(progress, review) : [];
+  const syncButtonText = isOneDriveConnected() ? "同步 OneDrive" : "连接 OneDrive";
+  const syncDisabled = oneDriveReviewState.busy || location.protocol === "file:";
+  const syncMessage = location.protocol === "file:"
+    ? "线上网站可连接 OneDrive"
+    : oneDriveReviewState.message;
 
   panel.innerHTML = `
     <div class="panel-header">
@@ -796,7 +1080,10 @@ function renderCycleReview() {
         <p class="label">Cycle 复盘</p>
         <h3>${escapeHtml(progress.cycle)} · ${statusText}</h3>
       </div>
-      <span class="pill ${progress.isComplete ? "positive" : ""}">${progress.isComplete ? "可总结" : "未完成"}</span>
+      <div class="cycle-panel-actions">
+        <span class="pill ${progress.isComplete ? "positive" : ""}">${progress.isComplete ? "可总结" : "未完成"}</span>
+        <button type="button" class="sync-action" data-onedrive-action="${isOneDriveConnected() ? "sync" : "connect"}" ${syncDisabled ? "disabled" : ""}>${syncButtonText}</button>
+      </div>
     </div>
 
     <div class="cycle-status">
@@ -809,6 +1096,7 @@ function renderCycleReview() {
     </div>
 
     <p class="cycle-note">${escapeHtml(missingText)}</p>
+    <p class="cycle-sync-state ${oneDriveReviewState.status}">${escapeHtml(syncMessage)}</p>
 
     <form class="cycle-form" id="cycleReviewForm">
       <div class="cycle-fields">
@@ -1137,7 +1425,20 @@ function bindEvents() {
     openEvaluationDetail(button.dataset.evaluation);
   });
 
-  document.getElementById("cycleReviewPanel").addEventListener("submit", (event) => {
+  document.getElementById("cycleReviewPanel").addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-onedrive-action]");
+    if (!button) return;
+
+    if (button.dataset.onedriveAction === "connect") {
+      await startOneDriveLogin();
+      return;
+    }
+    if (button.dataset.onedriveAction === "sync") {
+      await loadOneDriveReviews();
+    }
+  });
+
+  document.getElementById("cycleReviewPanel").addEventListener("submit", async (event) => {
     if (event.target.id !== "cycleReviewForm") return;
     event.preventDefault();
     const cycle = latestCycleName();
@@ -1149,6 +1450,11 @@ function bindEvents() {
       notes: formData.get("notes"),
       generatedAt: new Date().toISOString()
     });
+    if (isOneDriveConnected()) {
+      await saveOneDriveReviews();
+      return;
+    }
+    oneDriveReviewState = { status: "local", message: "本机保存，连接 OneDrive 后可跨设备同步", busy: false };
     renderCycleReview();
   });
 
@@ -1181,6 +1487,9 @@ function redrawCharts() {
 async function init() {
   await loadTrainingData();
   if (!trainingData) return;
+  cycleReviewsCache = localCycleReviews();
+  await completeOneDriveLogin();
+  await loadOneDriveReviews();
   document.getElementById("progressMetric").value = defaultMetricForExercise(selectedExercise);
   renderMetrics();
   renderWatchList();

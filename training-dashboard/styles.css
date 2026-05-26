@@ -412,6 +412,14 @@ canvas:active {
   gap: 14px;
 }
 
+.cycle-panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .cycle-status {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -446,6 +454,23 @@ canvas:active {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.55;
+}
+
+.cycle-sync-state {
+  margin: -6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.cycle-sync-state.connected {
+  color: var(--teal);
+  font-weight: 800;
+}
+
+.cycle-sync-state.error {
+  color: var(--coral);
+  font-weight: 800;
 }
 
 .cycle-form {
@@ -494,6 +519,29 @@ canvas:active {
 
 .primary-action:hover {
   background: var(--teal);
+}
+
+.sync-action {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sync-action:hover {
+  border-color: #b8ddd5;
+  color: var(--teal);
+}
+
+.sync-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .cycle-advice {
