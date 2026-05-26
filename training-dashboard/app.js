@@ -890,9 +890,9 @@ function renderMetrics() {
   const pullupLatest = getRecords("pullup").at(-1);
   const metrics = [
     { id: "bodyweight", label: "最新体重", value: `${latest.bodyweight}kg`, note: "5.25 记录" },
-    { id: "bench", label: "卧推状态", value: `${benchLatest.load}×${benchLatest.reps}`, note: "回归后已恢复到工作组" },
+    { id: "bench", label: "卧推状态", value: `${benchLatest.load}×${benchLatest.reps}`, note: "当前工作组" },
     { id: "squat", label: "深蹲峰值", value: `${squatBest.load}×${squatBest.reps}`, note: "Cycle 8 达成" },
-    { id: "pullup", label: "引体回归", value: `${pullupLatest.reps}/6/6`, note: "下一目标回到 8/8/8" }
+    { id: "pullup", label: "引体向上", value: `${pullupLatest.reps} 次`, note: "下一目标 8/8/8" }
   ];
 
   document.getElementById("metricGrid").innerHTML = metrics.map((metric) => `
@@ -934,8 +934,7 @@ function metricLabel(record, metric, key = selectedExercise) {
 }
 
 function filteredSessions() {
-  if (currentCycleFilter === "return") return trainingData.sessions.filter((item) => item.cycle === "回归");
-  if (currentCycleFilter === "latest") return trainingData.sessions.filter((item) => item.cycle === "Cycle 10" || item.cycle === "回归");
+  if (currentCycleFilter === "latest") return trainingData.sessions.filter((item) => item.cycle === latestCycleName());
   return trainingData.sessions;
 }
 
@@ -1630,12 +1629,12 @@ function detailExerciseConfig(key) {
       ]
     },
     pullup: {
-      title: "引体回归",
-      summary: "引体是停练后掉得最明显的项目。当前重点不是加负重，而是回到 8/8/8。",
+      title: "引体向上趋势",
+      summary: "引体目前的重点不是加负重，而是把连续组稳定回到 8/8/8。",
       metric: "reps",
       yDomain: [5, 9],
       sections: [
-        { title: "趋势判断", text: "停练前引体多次做到 8×3，Cycle 8 主观很轻松。回归后掉到 7/6/6，说明连续组耐力还没回来。" },
+        { title: "趋势判断", text: "前面多次做到 8×3，Cycle 8 主观很轻松。最近低点在 7/6/6，说明连续组耐力还需要重新拉稳。" },
         { title: "下一步", text: "下一次目标设为 8/7/7 或 8/8/7。高位下拉不要因为引体下降而过度补偿，先把引体动作质量拉回来。" }
       ]
     }
