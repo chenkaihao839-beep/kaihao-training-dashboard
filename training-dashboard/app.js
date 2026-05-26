@@ -30,6 +30,7 @@ const ONEDRIVE_REVIEW_SYNC = {
   clientId: "2cb029da-2da0-4ba3-9a92-ce990669c646",
   tenant: "common",
   filePath: "/训练/cycle-reviews.json",
+  workoutLogPath: "/训练/training-records.json",
   scopes: ["Files.ReadWrite", "offline_access"]
 };
 const CYCLE_DAYS = [
@@ -37,10 +38,55 @@ const CYCLE_DAYS = [
   { key: "back", label: "背日" },
   { key: "shoulderLeg", label: "肩腿日" }
 ];
+const WORKOUT_TEMPLATES = [
+  {
+    id: "chest",
+    day: "胸日 + 二头",
+    accent: "teal",
+    exercises: [
+      { key: "bench", name: "平板卧推", sets: 4, target: "主项工作组", unit: "kg" },
+      { key: "incline", name: "上斜哑铃卧推", sets: 3, target: "稳定行程", unit: "kg" },
+      { key: "chestFly", name: "蝴蝶机夹胸", sets: 3, target: "收缩控制", unit: "kg" },
+      { key: "curl", name: "哑铃弯举", sets: 3, target: "二头补充", unit: "kg" }
+    ]
+  },
+  {
+    id: "back",
+    day: "背日 + 三头",
+    accent: "blue",
+    exercises: [
+      { key: "pullup", name: "引体向上", sets: 3, target: "总次数优先", unit: "次" },
+      { key: "pulldown", name: "高位下拉", sets: 3, target: "垂直拉稳定", unit: "kg" },
+      { key: "row", name: "坐姿划船", sets: 3, target: "背部厚度", unit: "kg" },
+      { key: "triceps", name: "绳索下压", sets: 3, target: "三头补充", unit: "kg" }
+    ]
+  },
+  {
+    id: "shoulderLeg",
+    day: "肩腿日 + 腹",
+    accent: "coral",
+    exercises: [
+      { key: "squat", name: "杠铃深蹲", sets: 3, target: "动作速度", unit: "kg" },
+      { key: "rdl", name: "罗马尼亚硬拉", sets: 3, target: "腰背可控", unit: "kg" },
+      { key: "shoulderPress", name: "坐姿哑铃推肩", sets: 3, target: "保守推进", unit: "kg" },
+      { key: "legRaise", name: "悬垂举腿", sets: 3, target: "核心收尾", unit: "次" }
+    ]
+  }
+];
+const TRACKED_EXERCISE_KEYS = new Set(["bench", "incline", "squat", "rdl", "pullup", "pulldown", "shoulderPress"]);
 const REVIEW_LOCAL_PREFIX = "kaihao-cycle-review-";
 const REVIEW_TOKEN_KEY = "kaihao-onedrive-review-token";
+const WORKOUT_LOG_KEY = "kaihao-workout-logs";
+const WORKOUT_DRAFT_KEY = "kaihao-workout-draft";
 let cycleReviewsCache = {};
+let workoutLogCache = { workouts: [] };
+let workoutDraft = null;
 let oneDriveReviewState = {
+  status: "local",
+  message: "本机保存",
+  busy: false
+};
+let workoutLogState = {
   status: "local",
   message: "本机保存",
   busy: false
@@ -157,13 +203,21 @@ function oneDriveTokenUrl() {
   return `https://login.microsoftonline.com/${ONEDRIVE_REVIEW_SYNC.tenant}/oauth2/v2.0/token`;
 }
 
-function oneDriveReviewPathUrl() {
-  const encodedPath = ONEDRIVE_REVIEW_SYNC.filePath
+function oneDriveContentUrl(filePath) {
+  const encodedPath = filePath
     .split("/")
     .filter(Boolean)
     .map((part) => encodeURIComponent(part))
     .join("/");
   return `https://graph.microsoft.com/v1.0/me/drive/root:/${encodedPath}:/content`;
+}
+
+function oneDriveReviewPathUrl() {
+  return oneDriveContentUrl(ONEDRIVE_REVIEW_SYNC.filePath);
+}
+
+function oneDriveWorkoutLogPathUrl() {
+  return oneDriveContentUrl(ONEDRIVE_REVIEW_SYNC.workoutLogPath);
 }
 
 function base64UrlEncode(bytes) {
@@ -371,6 +425,264 @@ async function saveOneDriveReviews() {
     oneDriveReviewState = { status: "error", message: "OneDrive 同步失败，已保存在本机", busy: false };
   }
   renderCycleReview();
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function templateById(id) {
+  return WORKOUT_TEMPLATES.find((template) => template.id === id) || WORKOUT_TEMPLATES[0];
+}
+
+function nextCycleName() {
+  const current = latestCycleName();
+  const match = current.match(/Cycle\s+(\d+)/i);
+  if (!match) return current;
+  return `Cycle ${Number(match[1]) + 1}`;
+}
+
+function suggestedWorkoutCycle() {
+  const current = latestCycleName();
+  return cycleProgress(current).isComplete ? nextCycleName() : current;
+}
+
+function latestExerciseRecord(key) {
+  if (!trainingData.exercises[key]) return null;
+  return getRecords(key).at(-1);
+}
+
+function defaultExerciseSets(exercise) {
+  const latest = latestExerciseRecord(exercise.key);
+  const load = exercise.unit === "次" ? "" : latest?.load ?? "";
+  const reps = exercise.unit === "次" ? latest?.reps ?? "" : latest?.reps ?? "";
+  return Array.from({ length: exercise.sets }, (_, index) => ({
+    index: index + 1,
+    load,
+    reps,
+    done: false,
+    note: ""
+  }));
+}
+
+function createWorkoutDraft(templateId = WORKOUT_TEMPLATES[0].id) {
+  const template = templateById(templateId);
+  return {
+    id: `draft-${Date.now()}`,
+    templateId: template.id,
+    date: todayISO(),
+    cycle: suggestedWorkoutCycle(),
+    day: template.day,
+    bodyweight: latestSession()?.bodyweight || "",
+    sleep: "",
+    duration: "",
+    notes: "",
+    exercises: template.exercises.map((exercise) => ({
+      key: exercise.key,
+      name: exercise.name,
+      unit: exercise.unit,
+      target: exercise.target,
+      sets: defaultExerciseSets(exercise)
+    })),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function loadWorkoutDraft() {
+  try {
+    const draft = JSON.parse(localStorage.getItem(WORKOUT_DRAFT_KEY) || "null");
+    return draft || createWorkoutDraft();
+  } catch {
+    return createWorkoutDraft();
+  }
+}
+
+function storeWorkoutDraft(draft) {
+  workoutDraft = { ...draft, updatedAt: new Date().toISOString() };
+  localStorage.setItem(WORKOUT_DRAFT_KEY, JSON.stringify(workoutDraft));
+}
+
+function clearWorkoutDraft() {
+  localStorage.removeItem(WORKOUT_DRAFT_KEY);
+  workoutDraft = createWorkoutDraft();
+  storeWorkoutDraft(workoutDraft);
+}
+
+function localWorkoutLogs() {
+  try {
+    const payload = JSON.parse(localStorage.getItem(WORKOUT_LOG_KEY) || "{}");
+    return { workouts: Array.isArray(payload.workouts) ? payload.workouts : [] };
+  } catch {
+    return { workouts: [] };
+  }
+}
+
+function storeLocalWorkoutLogs(payload) {
+  workoutLogCache = {
+    workouts: [...(payload.workouts || [])].sort((a, b) => toTimestamp(a.date) - toTimestamp(b.date))
+  };
+  localStorage.setItem(WORKOUT_LOG_KEY, JSON.stringify(workoutLogCache));
+}
+
+function mergeWorkoutLogPayloads(localPayload, remotePayload) {
+  const byId = new Map();
+  [...(remotePayload.workouts || []), ...(localPayload.workouts || [])].forEach((workout) => {
+    const existing = byId.get(workout.id);
+    const existingTime = Date.parse(existing?.updatedAt || existing?.completedAt || 0);
+    const nextTime = Date.parse(workout.updatedAt || workout.completedAt || 0);
+    if (!existing || nextTime >= existingTime) {
+      byId.set(workout.id, workout);
+    }
+  });
+  return { workouts: Array.from(byId.values()).sort((a, b) => toTimestamp(a.date) - toTimestamp(b.date)) };
+}
+
+async function loadOneDriveWorkoutLogs() {
+  if (!isOneDriveConnected()) {
+    workoutLogCache = localWorkoutLogs();
+    return;
+  }
+
+  workoutLogState = { status: "syncing", message: "正在读取 OneDrive", busy: true };
+  renderEntryView();
+
+  try {
+    const response = await graphRequest(oneDriveWorkoutLogPathUrl(), { cache: "no-store" });
+    let remotePayload = { workouts: [] };
+    if (response.ok) {
+      remotePayload = await response.json();
+      remotePayload.workouts = Array.isArray(remotePayload.workouts) ? remotePayload.workouts : [];
+    } else if (response.status !== 404) {
+      throw new Error("workout_log_read_failed");
+    }
+
+    const merged = mergeWorkoutLogPayloads(localWorkoutLogs(), remotePayload);
+    storeLocalWorkoutLogs(merged);
+    if (JSON.stringify(merged.workouts) !== JSON.stringify(remotePayload.workouts)) {
+      await saveOneDriveWorkoutLogs();
+      return;
+    }
+    workoutLogState = { status: "connected", message: "OneDrive 已同步", busy: false };
+  } catch {
+    workoutLogState = { status: "error", message: "OneDrive 读取失败，已保存在本机", busy: false };
+    workoutLogCache = localWorkoutLogs();
+  }
+  renderEntryView();
+}
+
+async function saveOneDriveWorkoutLogs() {
+  if (!isOneDriveConnected()) return;
+
+  workoutLogState = { status: "syncing", message: "正在同步 OneDrive", busy: true };
+  renderEntryView();
+
+  const payload = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    workouts: workoutLogCache.workouts || []
+  };
+
+  try {
+    const response = await graphRequest(oneDriveWorkoutLogPathUrl(), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload, null, 2)
+    });
+    if (!response.ok) throw new Error("workout_log_write_failed");
+    workoutLogState = { status: "connected", message: "OneDrive 已同步", busy: false };
+  } catch {
+    workoutLogState = { status: "error", message: "OneDrive 同步失败，已保存在本机", busy: false };
+  }
+  renderEntryView();
+}
+
+function completedSetsForExercise(exercise) {
+  return exercise.sets
+    .filter((set) => set.done && Number(set.reps) > 0)
+    .map((set) => ({
+      load: Number(set.load || 0),
+      reps: Number(set.reps || 0),
+      note: set.note || ""
+    }));
+}
+
+function bestWorkoutSet(exercise) {
+  const sets = completedSetsForExercise(exercise);
+  if (!sets.length) return null;
+  return sets.reduce((best, set) => {
+    const score = exercise.unit === "次" ? set.reps : estimateOneRm(set.load, set.reps, exercise.key);
+    const bestScore = exercise.unit === "次" ? best.reps : estimateOneRm(best.load, best.reps, exercise.key);
+    return score > bestScore ? set : best;
+  }, sets[0]);
+}
+
+function workoutSummary(workout) {
+  const highlights = workout.exercises
+    .map((exercise) => {
+      const best = bestWorkoutSet(exercise);
+      if (!best) return null;
+      return exercise.unit === "次"
+        ? `${exercise.name} ${best.reps} 次`
+        : `${exercise.name} ${best.load}×${best.reps}`;
+    })
+    .filter(Boolean)
+    .slice(0, 3);
+  return highlights.length ? highlights.join("；") : "网站录入训练";
+}
+
+function workoutSetCount(workout) {
+  return workout.exercises.reduce((total, exercise) => total + completedSetsForExercise(exercise).length, 0);
+}
+
+function appendWorkoutToTrainingData(workout) {
+  trainingData.__entryWorkoutIds = trainingData.__entryWorkoutIds || new Set();
+  if (trainingData.__entryWorkoutIds.has(workout.id)) return;
+  trainingData.__entryWorkoutIds.add(workout.id);
+
+  trainingData.sessions.push({
+    id: workout.id,
+    date: workout.date,
+    cycle: workout.cycle,
+    day: workout.day,
+    bodyweight: workout.bodyweight === "" ? null : Number(workout.bodyweight),
+    duration: workout.duration === "" ? null : Number(workout.duration),
+    sleep: workout.sleep || "",
+    phase: "网站录入",
+    summary: workoutSummary(workout)
+  });
+
+  workout.exercises.forEach((exercise) => {
+    if (!TRACKED_EXERCISE_KEYS.has(exercise.key) || !trainingData.exercises[exercise.key]) return;
+    const best = bestWorkoutSet(exercise);
+    if (!best) return;
+    trainingData.exercises[exercise.key].records.push([
+      workout.date,
+      workout.cycle,
+      best.load,
+      best.reps,
+      best.note || "网站录入"
+    ]);
+  });
+
+  trainingData.sessions.sort((a, b) => toTimestamp(a.date) - toTimestamp(b.date));
+  Object.values(trainingData.exercises).forEach((exercise) => {
+    exercise.records.sort((a, b) => toTimestamp(a[0]) - toTimestamp(b[0]));
+  });
+}
+
+function mergeWorkoutLogsIntoTrainingData() {
+  (workoutLogCache.workouts || []).forEach(appendWorkoutToTrainingData);
+}
+
+function refreshDashboardAfterEntry() {
+  renderMetrics();
+  renderWatchList();
+  renderCycleReview();
+  renderSplitVisual();
+  renderExerciseTabs();
+  renderSessions();
+  renderExerciseView();
+  redrawCharts();
 }
 
 function cycleProgress(cycle) {
@@ -1364,6 +1676,205 @@ function renderExerciseInsights(records, metric) {
   `).join("");
 }
 
+function renderEntryView() {
+  const consoleEl = document.getElementById("entryConsole");
+  const historyEl = document.getElementById("entryHistory");
+  if (!consoleEl || !historyEl) return;
+
+  workoutDraft = workoutDraft || loadWorkoutDraft();
+  const template = templateById(workoutDraft.templateId);
+  const completedSetCount = workoutDraft.exercises.reduce((total, exercise) => {
+    return total + exercise.sets.filter((set) => set.done).length;
+  }, 0);
+  const totalSetCount = workoutDraft.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
+  const syncButtonText = isOneDriveConnected() ? "同步 OneDrive" : "连接 OneDrive";
+  const syncDisabled = workoutLogState.busy || location.protocol === "file:";
+  const syncMessage = location.protocol === "file:"
+    ? "线上网站可连接 OneDrive"
+    : workoutLogState.message;
+
+  consoleEl.innerHTML = `
+    <article class="panel entry-panel">
+      <div class="panel-header">
+        <div>
+          <p class="label">训练录入</p>
+          <h3>${escapeHtml(template.day)}</h3>
+        </div>
+        <div class="cycle-panel-actions">
+          <span class="pill">${completedSetCount}/${totalSetCount} 组</span>
+          <button type="button" class="sync-action" data-workout-action="${isOneDriveConnected() ? "sync" : "connect"}" ${syncDisabled ? "disabled" : ""}>${syncButtonText}</button>
+        </div>
+      </div>
+
+      <div class="template-row" role="group" aria-label="训练日模板">
+        ${WORKOUT_TEMPLATES.map((item) => `
+          <button type="button" class="${item.id === workoutDraft.templateId ? "active" : ""}" data-template="${item.id}">
+            <span>${item.day}</span>
+          </button>
+        `).join("")}
+      </div>
+
+      <p class="cycle-sync-state ${workoutLogState.status}">${escapeHtml(syncMessage)}</p>
+
+      <form id="workoutEntryForm" class="workout-form">
+        <div class="entry-meta-grid">
+          <label>
+            <span>日期</span>
+            <input type="date" name="date" value="${escapeHtml(workoutDraft.date)}">
+          </label>
+          <label>
+            <span>Cycle</span>
+            <input type="text" name="cycle" value="${escapeHtml(workoutDraft.cycle)}">
+          </label>
+          <label>
+            <span>体重 kg</span>
+            <input type="number" step="0.05" name="bodyweight" value="${escapeHtml(workoutDraft.bodyweight)}">
+          </label>
+          <label>
+            <span>睡眠</span>
+            <input type="text" name="sleep" value="${escapeHtml(workoutDraft.sleep)}" placeholder="8h10">
+          </label>
+          <label>
+            <span>时长 分钟</span>
+            <input type="number" step="1" name="duration" value="${escapeHtml(workoutDraft.duration)}">
+          </label>
+        </div>
+
+        <div class="exercise-entry-list">
+          ${workoutDraft.exercises.map((exercise, exerciseIndex) => `
+            <section class="exercise-entry-card" data-exercise-index="${exerciseIndex}">
+              <div class="exercise-entry-head">
+                <div>
+                  <strong>${escapeHtml(exercise.name)}</strong>
+                  <span>${escapeHtml(exercise.target)}</span>
+                </div>
+                <button type="button" class="icon-action" data-workout-action="addSet" data-exercise-index="${exerciseIndex}" title="加一组">＋</button>
+              </div>
+              <div class="set-grid set-grid-head" aria-hidden="true">
+                <span>组</span>
+                <span>${exercise.unit === "次" ? "负重" : "重量"}</span>
+                <span>次数</span>
+                <span>完成</span>
+              </div>
+              ${exercise.sets.map((set, setIndex) => `
+                <div class="set-grid">
+                  <span class="set-index">${setIndex + 1}</span>
+                  <input type="number" inputmode="decimal" step="0.5" data-field="load" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" value="${escapeHtml(set.load)}" placeholder="${exercise.unit === "次" ? "自重" : "kg"}">
+                  <input type="number" inputmode="numeric" step="1" data-field="reps" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" value="${escapeHtml(set.reps)}" placeholder="${exercise.unit}">
+                  <label class="done-toggle">
+                    <input type="checkbox" data-field="done" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" ${set.done ? "checked" : ""}>
+                    <span></span>
+                  </label>
+                  <input class="set-note" type="text" data-field="note" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" value="${escapeHtml(set.note)}" placeholder="备注">
+                </div>
+              `).join("")}
+            </section>
+          `).join("")}
+        </div>
+
+        <label class="entry-notes">
+          <span>训练备注</span>
+          <textarea name="notes" rows="3" placeholder="今天的整体状态、动作质量、疼痛或恢复">${escapeHtml(workoutDraft.notes)}</textarea>
+        </label>
+
+        <div class="entry-actions">
+          <button type="button" class="sync-action" data-workout-action="newDraft">重新开始</button>
+          <button type="button" class="sync-action" data-workout-action="saveDraft">保存草稿</button>
+          <button type="submit" class="primary-action">完成训练</button>
+        </div>
+      </form>
+    </article>
+  `;
+
+  const recent = [...(workoutLogCache.workouts || [])].reverse().slice(0, 6);
+  historyEl.innerHTML = recent.length ? recent.map((workout) => `
+    <article class="entry-history-item">
+      <div>
+        <strong>${formatDate(workout.date)} · ${escapeHtml(workout.day)}</strong>
+        <span>${escapeHtml(workout.cycle)} · ${workoutSetCount(workout)} 组</span>
+      </div>
+      <p>${escapeHtml(workoutSummary(workout))}</p>
+    </article>
+  `).join("") : `<p class="empty-state">还没有网站录入记录。</p>`;
+}
+
+function updateWorkoutDraftFromForm() {
+  const form = document.getElementById("workoutEntryForm");
+  if (!form || !workoutDraft) return;
+  const formData = new FormData(form);
+  workoutDraft.date = formData.get("date") || todayISO();
+  workoutDraft.cycle = formData.get("cycle") || suggestedWorkoutCycle();
+  workoutDraft.bodyweight = formData.get("bodyweight") || "";
+  workoutDraft.sleep = formData.get("sleep") || "";
+  workoutDraft.duration = formData.get("duration") || "";
+  workoutDraft.notes = formData.get("notes") || "";
+  storeWorkoutDraft(workoutDraft);
+}
+
+function updateDraftSet(target) {
+  const exerciseIndex = Number(target.dataset.exerciseIndex);
+  const setIndex = Number(target.dataset.setIndex);
+  const field = target.dataset.field;
+  if (!Number.isInteger(exerciseIndex) || !Number.isInteger(setIndex) || !field) return;
+  const set = workoutDraft?.exercises?.[exerciseIndex]?.sets?.[setIndex];
+  if (!set) return;
+  set[field] = field === "done" ? target.checked : target.value;
+  storeWorkoutDraft(workoutDraft);
+}
+
+function switchWorkoutTemplate(templateId) {
+  updateWorkoutDraftFromForm();
+  workoutDraft = createWorkoutDraft(templateId);
+  storeWorkoutDraft(workoutDraft);
+  renderEntryView();
+}
+
+function addWorkoutSet(exerciseIndex) {
+  updateWorkoutDraftFromForm();
+  const exercise = workoutDraft.exercises[exerciseIndex];
+  if (!exercise) return;
+  const previous = exercise.sets.at(-1) || { load: "", reps: "", note: "" };
+  exercise.sets.push({
+    index: exercise.sets.length + 1,
+    load: previous.load,
+    reps: previous.reps,
+    done: false,
+    note: ""
+  });
+  storeWorkoutDraft(workoutDraft);
+  renderEntryView();
+}
+
+function finalizedWorkoutFromDraft() {
+  updateWorkoutDraftFromForm();
+  const workout = JSON.parse(JSON.stringify(workoutDraft));
+  workout.id = `web-${workout.date}-${workout.templateId}-${Date.now()}`;
+  workout.completedAt = new Date().toISOString();
+  workout.updatedAt = workout.completedAt;
+  workout.source = "web";
+  return workout;
+}
+
+async function completeWorkoutEntry() {
+  const workout = finalizedWorkoutFromDraft();
+  if (workoutSetCount(workout) === 0) {
+    workoutLogState = { status: "error", message: "至少勾选一组完成", busy: false };
+    renderEntryView();
+    return;
+  }
+
+  storeLocalWorkoutLogs(mergeWorkoutLogPayloads(localWorkoutLogs(), { workouts: [workout] }));
+  appendWorkoutToTrainingData(workout);
+  if (isOneDriveConnected()) {
+    await saveOneDriveWorkoutLogs();
+  } else {
+    workoutLogState = { status: "local", message: "本机保存，连接 OneDrive 后可跨设备同步", busy: false };
+  }
+  clearWorkoutDraft();
+  renderEntryView();
+  refreshDashboardAfterEntry();
+}
+
 function renderSessions() {
   const sessions = filteredSessions().slice().reverse();
   document.getElementById("sessionList").innerHTML = sessions.map((session) => `
@@ -1458,6 +1969,63 @@ function bindEvents() {
     renderCycleReview();
   });
 
+  document.getElementById("entryConsole").addEventListener("click", async (event) => {
+    const templateButton = event.target.closest("[data-template]");
+    if (templateButton) {
+      switchWorkoutTemplate(templateButton.dataset.template);
+      return;
+    }
+
+    const actionButton = event.target.closest("[data-workout-action]");
+    if (!actionButton) return;
+
+    if (actionButton.dataset.workoutAction === "connect") {
+      await startOneDriveLogin();
+      return;
+    }
+    if (actionButton.dataset.workoutAction === "sync") {
+      await loadOneDriveWorkoutLogs();
+      return;
+    }
+    if (actionButton.dataset.workoutAction === "saveDraft") {
+      updateWorkoutDraftFromForm();
+      workoutLogState = { status: "local", message: "草稿已保存", busy: false };
+      renderEntryView();
+      return;
+    }
+    if (actionButton.dataset.workoutAction === "newDraft") {
+      clearWorkoutDraft();
+      renderEntryView();
+      return;
+    }
+    if (actionButton.dataset.workoutAction === "addSet") {
+      addWorkoutSet(Number(actionButton.dataset.exerciseIndex));
+    }
+  });
+
+  document.getElementById("entryConsole").addEventListener("input", (event) => {
+    if (event.target.matches("[data-field]")) {
+      updateDraftSet(event.target);
+      return;
+    }
+    updateWorkoutDraftFromForm();
+  });
+
+  document.getElementById("entryConsole").addEventListener("change", (event) => {
+    if (event.target.matches("[data-field]")) {
+      updateDraftSet(event.target);
+      renderEntryView();
+      return;
+    }
+    updateWorkoutDraftFromForm();
+  });
+
+  document.getElementById("entryConsole").addEventListener("submit", async (event) => {
+    if (event.target.id !== "workoutEntryForm") return;
+    event.preventDefault();
+    await completeWorkoutEntry();
+  });
+
   document.getElementById("metricGrid").addEventListener("click", (event) => {
     const button = event.target.closest("[data-metric-detail]");
     if (!button) return;
@@ -1488,13 +2056,18 @@ async function init() {
   await loadTrainingData();
   if (!trainingData) return;
   cycleReviewsCache = localCycleReviews();
+  workoutLogCache = localWorkoutLogs();
+  workoutDraft = loadWorkoutDraft();
   await completeOneDriveLogin();
   await loadOneDriveReviews();
+  await loadOneDriveWorkoutLogs();
+  mergeWorkoutLogsIntoTrainingData();
   document.getElementById("progressMetric").value = defaultMetricForExercise(selectedExercise);
   renderMetrics();
   renderWatchList();
   renderCycleReview();
   renderSplitVisual();
+  renderEntryView();
   renderExerciseTabs();
   renderSessions();
   bindEvents();
