@@ -1994,6 +1994,12 @@ function renderSessions() {
   `).join("");
 }
 
+function resetHorizontalScroll() {
+  document.documentElement.scrollLeft = 0;
+  document.body.scrollLeft = 0;
+  if (window.scrollX) window.scrollTo(0, window.scrollY);
+}
+
 function bindEvents() {
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2004,6 +2010,7 @@ function bindEvents() {
       document.querySelectorAll(".view").forEach((view) => {
         view.classList.toggle("active", view.id === button.dataset.view);
       });
+      resetHorizontalScroll();
       redrawCharts();
     });
   });
@@ -2150,9 +2157,12 @@ function bindEvents() {
   });
 
   window.addEventListener("resize", () => {
+    resetHorizontalScroll();
     clearTimeout(window.__chartResizeTimer);
     window.__chartResizeTimer = setTimeout(redrawCharts, 120);
   });
+
+  window.addEventListener("scroll", resetHorizontalScroll, { passive: true });
 }
 
 function redrawCharts() {
@@ -2181,6 +2191,7 @@ async function init() {
   renderSessions();
   bindEvents();
   redrawCharts();
+  resetHorizontalScroll();
 }
 
 init();
