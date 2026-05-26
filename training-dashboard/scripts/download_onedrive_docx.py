@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -24,13 +25,16 @@ def request_access_token():
         "client_secret": require_env("MS_CLIENT_SECRET"),
         "refresh_token": require_env("MS_REFRESH_TOKEN"),
         "grant_type": "refresh_token",
-        "scope": "offline_access Files.Read",
     }
     body = urllib.parse.urlencode(data).encode("utf-8")
     request = urllib.request.Request(TOKEN_URL, data=body, method="POST")
     request.add_header("Content-Type", "application/x-www-form-urlencoded")
-    with urllib.request.urlopen(request) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        raise SystemExit(f"Token refresh failed: HTTP {error.code}\n{body}") from error
     if "access_token" not in payload:
         raise SystemExit(f"Token response did not include access_token: {payload}")
     return payload["access_token"]
@@ -41,8 +45,12 @@ def download_file(access_token, one_drive_path, output_path):
     url = f"{GRAPH_ROOT}/me/drive/root:/{encoded_path}:/content"
     request = urllib.request.Request(url)
     request.add_header("Authorization", f"Bearer {access_token}")
-    with urllib.request.urlopen(request) as response:
-        output_path.write_bytes(response.read())
+    try:
+        with urllib.request.urlopen(request) as response:
+            output_path.write_bytes(response.read())
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        raise SystemExit(f"OneDrive download failed: HTTP {error.code}\n{body}") from error
 
 
 def main():

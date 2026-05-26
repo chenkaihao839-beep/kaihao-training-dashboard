@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -32,8 +33,12 @@ def exchange_code(client_id, client_secret, redirect_uri, code):
     }
     request = urllib.request.Request(TOKEN_URL, data=urllib.parse.urlencode(data).encode("utf-8"), method="POST")
     request.add_header("Content-Type", "application/x-www-form-urlencoded")
-    with urllib.request.urlopen(request) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        raise SystemExit(f"Token exchange failed: HTTP {error.code}\n{body}") from error
 
 
 def main():
@@ -42,6 +47,7 @@ def main():
     parser.add_argument("--client-secret")
     parser.add_argument("--redirect-uri", default="http://localhost")
     parser.add_argument("--code")
+    parser.add_argument("--save-json")
     args = parser.parse_args()
 
     if not args.code:
@@ -52,12 +58,17 @@ def main():
         raise SystemExit("--client-secret is required when exchanging an authorization code")
 
     payload = exchange_code(args.client_id, args.client_secret, args.redirect_uri, args.code)
-    print(json.dumps({
+    result = {
         "access_token_present": bool(payload.get("access_token")),
         "refresh_token": payload.get("refresh_token"),
         "expires_in": payload.get("expires_in"),
         "scope": payload.get("scope"),
-    }, indent=2))
+    }
+    if args.save_json:
+        with open(args.save_json, "w", encoding="utf-8") as token_file:
+            json.dump(payload, token_file)
+        result["saved_json"] = args.save_json
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":
