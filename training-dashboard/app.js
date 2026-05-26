@@ -26,6 +26,11 @@ const colors = {
 let selectedExercise = "bench";
 let currentCycleFilter = "all";
 const chartStore = {};
+const CYCLE_DAYS = [
+  { key: "chest", label: "胸日" },
+  { key: "back", label: "背日" },
+  { key: "shoulderLeg", label: "肩腿日" }
+];
 
 function defaultMetricForExercise(key) {
   return key === "pullup" ? "reps" : "load";
@@ -43,6 +48,129 @@ function formatDate(value) {
 
 function latestSession() {
   return trainingData.sessions[trainingData.sessions.length - 1];
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function classifyCycleDay(day) {
+  if (day.includes("胸")) return "chest";
+  if (day.includes("背")) return "back";
+  if (day.includes("肩") || day.includes("腿")) return "shoulderLeg";
+  return "other";
+}
+
+function latestCycleName() {
+  const namedCycles = trainingData.sessions
+    .map((session) => session.cycle)
+    .filter((cycle) => /^Cycle\s+\d+$/i.test(cycle));
+  if (namedCycles.length) return namedCycles.at(-1);
+  return latestSession().cycle;
+}
+
+function getCycleSessions(cycle) {
+  return trainingData.sessions.filter((session) => session.cycle === cycle);
+}
+
+function getCycleReviewKey(cycle) {
+  return `kaihao-cycle-review-${cycle}`;
+}
+
+function getStoredCycleReview(cycle) {
+  try {
+    return JSON.parse(localStorage.getItem(getCycleReviewKey(cycle)) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function storeCycleReview(cycle, review) {
+  localStorage.setItem(getCycleReviewKey(cycle), JSON.stringify(review));
+}
+
+function cycleProgress(cycle) {
+  const sessions = getCycleSessions(cycle);
+  const completedKeys = new Set(sessions.map((session) => classifyCycleDay(session.day)));
+  const completedDays = CYCLE_DAYS.filter((day) => completedKeys.has(day.key));
+  const missingDays = CYCLE_DAYS.filter((day) => !completedKeys.has(day.key));
+  return {
+    cycle,
+    sessions,
+    completedDays,
+    missingDays,
+    isComplete: missingDays.length === 0
+  };
+}
+
+function cycleSummary(progress) {
+  const weights = progress.sessions
+    .map((session) => session.bodyweight)
+    .filter((weight) => Number.isFinite(weight));
+  const durations = progress.sessions
+    .map((session) => session.duration)
+    .filter((duration) => Number.isFinite(duration));
+  const firstWeight = weights.at(0);
+  const latestWeight = weights.at(-1);
+  const weightChange = Number.isFinite(firstWeight) && Number.isFinite(latestWeight)
+    ? Math.round((latestWeight - firstWeight) * 100) / 100
+    : null;
+  const avgDuration = durations.length
+    ? Math.round(durations.reduce((total, value) => total + value, 0) / durations.length)
+    : null;
+
+  return {
+    weightChange,
+    avgDuration,
+    latestSummaries: progress.sessions.slice(-3).map((session) => session.summary)
+  };
+}
+
+function latestCycleRecord(key, cycle) {
+  return getRecords(key).filter((record) => record.cycle === cycle).at(-1);
+}
+
+function generateCycleAdvice(progress, review) {
+  const recovery = Number(review.recovery || 3);
+  const effort = Number(review.effort || 3);
+  const pain = Number(review.pain || 1);
+  const summary = cycleSummary(progress);
+  const advice = [];
+  const bench = latestCycleRecord("bench", progress.cycle);
+  const pullup = latestCycleRecord("pullup", progress.cycle);
+  const squat = latestCycleRecord("squat", progress.cycle);
+
+  if (!progress.isComplete) {
+    advice.push(`当前 ${progress.cycle} 还差 ${progress.missingDays.map((day) => day.label).join("、")}，先把这个 Cycle 练完整，再最终确定下轮加重量。`);
+  }
+
+  if (pain >= 4 || recovery <= 2) {
+    advice.push("下一个 Cycle 先保守：主项保持当前重量，少做力竭组，把动作速度和恢复感拉回来。");
+  } else if (effort <= 3 && recovery >= 4 && progress.isComplete) {
+    advice.push("下一个 Cycle 可以小幅推进：稳定完成的主项加 2.5kg，或者在同重量下先补 1-2 次。");
+  } else {
+    advice.push("下一个 Cycle 维持渐进：主项先按本轮重量开局，只有当天热身和第一组都顺，再加一点。");
+  }
+
+  if (bench) {
+    advice.push(`卧推参考：本轮最新是 ${bench.load}×${bench.reps}。如果第二组仍有明显粘滞，继续稳 60kg；如果很干净，再安排 62.5kg 上探。`);
+  }
+  if (pullup) {
+    advice.push(`引体参考：本轮最新是 ${pullup.reps} 次。下一轮优先把总次数补回来，不急着给下拉加重量。`);
+  }
+  if (squat) {
+    advice.push(`深蹲参考：本轮最新是 ${squat.load}×${squat.reps}。腰背感觉正常再推进，否则保持并提高动作质量。`);
+  }
+  if (summary.weightChange !== null) {
+    advice.push(`体重参考：本轮记录变化 ${summary.weightChange >= 0 ? "+" : ""}${summary.weightChange}kg。训练表现上升时，这个方向是可以接受的。`);
+  }
+
+  return advice;
 }
 
 function renderMetrics() {
@@ -123,6 +251,54 @@ function normalizeChartSeries(series) {
       .map((point) => ({ ...point, x: toTimestamp(point.date) }))
       .sort((a, b) => a.x - b.x)
   }));
+}
+
+function chooseDateTicks(dates, scale, ctx, plot) {
+  if (dates.length <= 1) {
+    return dates.map((date) => ({ date, label: formatDate(date), x: scale.toX(toTimestamp(date)) }));
+  }
+
+  const maxLabels = clamp(Math.floor(plot.width / 64) + 1, 2, 6);
+  const step = Math.max(1, Math.ceil((dates.length - 1) / Math.max(1, maxLabels - 1)));
+  const candidateIndexes = [];
+
+  for (let index = 0; index < dates.length; index += step) {
+    candidateIndexes.push(index);
+  }
+  if (candidateIndexes.at(-1) !== dates.length - 1) {
+    candidateIndexes.push(dates.length - 1);
+  }
+
+  const candidates = [...new Set(candidateIndexes)].map((index) => {
+    const date = dates[index];
+    const label = formatDate(date);
+    return {
+      date,
+      label,
+      x: scale.toX(toTimestamp(date)),
+      width: ctx.measureText(label).width
+    };
+  });
+
+  const selected = [];
+  const hasRoomAfter = (left, right) => right.x - left.x >= (left.width + right.width) / 2 + 12;
+
+  candidates.forEach((tick) => {
+    const previous = selected.at(-1);
+    if (!previous || hasRoomAfter(previous, tick)) {
+      selected.push(tick);
+      return;
+    }
+
+    if (tick.date === dates.at(-1)) {
+      const beforePrevious = selected.at(-2);
+      if (!beforePrevious || hasRoomAfter(beforePrevious, tick)) {
+        selected[selected.length - 1] = tick;
+      }
+    }
+  });
+
+  return selected;
 }
 
 function getChartExtents(series) {
@@ -467,12 +643,9 @@ function drawLineChart(canvasId, series, options = {}) {
     .filter((point) => point.x >= view.xMin && point.x <= view.xMax)
     .map((point) => point.date)))
     .sort((a, b) => toTimestamp(a) - toTimestamp(b));
-  const step = Math.max(1, Math.ceil(visibleDates.length / 6));
-  visibleDates.forEach((date, index) => {
-    if (index % step === 0 || index === visibleDates.length - 1) {
-      ctx.fillStyle = colors.text;
-      ctx.fillText(formatDate(date), scale.toX(toTimestamp(date)), height - 22);
-    }
+  chooseDateTicks(visibleDates, scale, ctx, plot).forEach((tick) => {
+    ctx.fillStyle = colors.text;
+    ctx.fillText(tick.label, tick.x, height - 22);
   });
 
   if (options.legend) {
@@ -592,6 +765,100 @@ function renderWatchList() {
     </button>
   `).join("");
   window.evaluationItems = items;
+}
+
+function renderCycleReview() {
+  const panel = document.getElementById("cycleReviewPanel");
+  if (!panel) return;
+
+  const progress = cycleProgress(latestCycleName());
+  const review = getStoredCycleReview(progress.cycle);
+  const summary = cycleSummary(progress);
+  const statusText = progress.isComplete
+    ? "Cycle 已结束"
+    : `进行中 ${progress.completedDays.length}/${CYCLE_DAYS.length}`;
+  const missingText = progress.isComplete
+    ? "三天训练已完整记录，可以复盘并生成下一轮方向。"
+    : `还差 ${progress.missingDays.map((day) => day.label).join("、")}。`;
+  const summaryItems = [
+    { label: "训练日", value: `${progress.completedDays.length}/${CYCLE_DAYS.length}` },
+    { label: "平均时长", value: summary.avgDuration ? `${summary.avgDuration} 分钟` : "暂无" },
+    {
+      label: "体重变化",
+      value: summary.weightChange === null ? "暂无" : `${summary.weightChange >= 0 ? "+" : ""}${summary.weightChange}kg`
+    }
+  ];
+  const advice = review.generatedAt ? generateCycleAdvice(progress, review) : [];
+
+  panel.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <p class="label">Cycle 复盘</p>
+        <h3>${escapeHtml(progress.cycle)} · ${statusText}</h3>
+      </div>
+      <span class="pill ${progress.isComplete ? "positive" : ""}">${progress.isComplete ? "可总结" : "未完成"}</span>
+    </div>
+
+    <div class="cycle-status">
+      ${summaryItems.map((item) => `
+        <div class="cycle-status-item">
+          <span>${item.label}</span>
+          <strong>${item.value}</strong>
+        </div>
+      `).join("")}
+    </div>
+
+    <p class="cycle-note">${escapeHtml(missingText)}</p>
+
+    <form class="cycle-form" id="cycleReviewForm">
+      <div class="cycle-fields">
+        <label>
+          <span>恢复</span>
+          <select name="recovery" aria-label="恢复">
+            <option value="5" ${review.recovery === "5" ? "selected" : ""}>很好</option>
+            <option value="4" ${review.recovery === "4" ? "selected" : ""}>不错</option>
+            <option value="3" ${!review.recovery || review.recovery === "3" ? "selected" : ""}>一般</option>
+            <option value="2" ${review.recovery === "2" ? "selected" : ""}>偏累</option>
+            <option value="1" ${review.recovery === "1" ? "selected" : ""}>很差</option>
+          </select>
+        </label>
+        <label>
+          <span>难度</span>
+          <select name="effort" aria-label="难度">
+            <option value="1" ${review.effort === "1" ? "selected" : ""}>很轻松</option>
+            <option value="2" ${review.effort === "2" ? "selected" : ""}>可控</option>
+            <option value="3" ${!review.effort || review.effort === "3" ? "selected" : ""}>刚好</option>
+            <option value="4" ${review.effort === "4" ? "selected" : ""}>偏难</option>
+            <option value="5" ${review.effort === "5" ? "selected" : ""}>太难</option>
+          </select>
+        </label>
+        <label>
+          <span>不适</span>
+          <select name="pain" aria-label="不适">
+            <option value="1" ${!review.pain || review.pain === "1" ? "selected" : ""}>没有</option>
+            <option value="2" ${review.pain === "2" ? "selected" : ""}>轻微</option>
+            <option value="3" ${review.pain === "3" ? "selected" : ""}>明显</option>
+            <option value="4" ${review.pain === "4" ? "selected" : ""}>影响训练</option>
+            <option value="5" ${review.pain === "5" ? "selected" : ""}>需要停止</option>
+          </select>
+        </label>
+      </div>
+      <label class="cycle-textarea">
+        <span>主观记录</span>
+        <textarea name="notes" rows="3" placeholder="这一轮哪里顺、哪里卡、恢复怎么样">${escapeHtml(review.notes || "")}</textarea>
+      </label>
+      <button type="submit" class="primary-action">${review.generatedAt ? "更新下轮建议" : "生成下轮建议"}</button>
+    </form>
+
+    <div class="cycle-advice ${advice.length ? "" : "empty"}" id="cycleAdvice">
+      ${advice.length ? `
+        <p class="label">下轮方向</p>
+        <ul>
+          ${advice.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
+      ` : `<p>完成主观反馈后，这里会生成下一轮训练方向。</p>`}
+    </div>
+  `;
 }
 
 function openEvaluationDetail(id) {
@@ -870,6 +1137,21 @@ function bindEvents() {
     openEvaluationDetail(button.dataset.evaluation);
   });
 
+  document.getElementById("cycleReviewPanel").addEventListener("submit", (event) => {
+    if (event.target.id !== "cycleReviewForm") return;
+    event.preventDefault();
+    const cycle = latestCycleName();
+    const formData = new FormData(event.target);
+    storeCycleReview(cycle, {
+      recovery: formData.get("recovery"),
+      effort: formData.get("effort"),
+      pain: formData.get("pain"),
+      notes: formData.get("notes"),
+      generatedAt: new Date().toISOString()
+    });
+    renderCycleReview();
+  });
+
   document.getElementById("metricGrid").addEventListener("click", (event) => {
     const button = event.target.closest("[data-metric-detail]");
     if (!button) return;
@@ -902,6 +1184,7 @@ async function init() {
   document.getElementById("progressMetric").value = defaultMetricForExercise(selectedExercise);
   renderMetrics();
   renderWatchList();
+  renderCycleReview();
   renderSplitVisual();
   renderExerciseTabs();
   renderSessions();

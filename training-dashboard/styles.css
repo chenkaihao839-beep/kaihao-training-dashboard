@@ -29,7 +29,8 @@ body {
 }
 
 button,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -406,6 +407,118 @@ canvas:active {
   line-height: 1.45;
 }
 
+.cycle-review-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.cycle-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cycle-status-item {
+  min-height: 74px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.cycle-status-item span,
+.cycle-form label span,
+.cycle-advice p {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.cycle-status-item strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 20px;
+}
+
+.cycle-note {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.cycle-form {
+  display: grid;
+  gap: 10px;
+}
+
+.cycle-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cycle-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.cycle-form select,
+.cycle-form textarea {
+  width: 100%;
+}
+
+.cycle-form textarea {
+  min-height: 82px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+
+.primary-action {
+  justify-self: start;
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--ink);
+  color: #fff;
+  padding: 0 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.primary-action:hover {
+  background: var(--teal);
+}
+
+.cycle-advice {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.cycle-advice.empty p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.cycle-advice ul {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .detail-modal {
   position: fixed;
   inset: 0;
@@ -689,6 +802,8 @@ canvas:active {
 
   .metric-grid,
   .split-visual,
+  .cycle-status,
+  .cycle-fields,
   .insight-strip {
     grid-template-columns: 1fr;
   }
