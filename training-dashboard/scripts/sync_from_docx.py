@@ -87,6 +87,49 @@ def parse_duration(value):
     return float(number.group(1)) if number else None
 
 
+def parse_expected_sets(plan_line):
+    match = re.search(r"(\d+)\s*(?:[×xX]|组)", plan_line)
+    return int(match.group(1)) if match else None
+
+
+def actual_line_has_final_set(line, expected_sets=None):
+    compact = re.sub(r"\s+", "", clean_text(line))
+    if not compact:
+        return False
+
+    if expected_sets:
+        marker = f"{expected_sets}."
+        marker_index = compact.rfind(marker)
+        if marker_index == -1:
+            return False
+        final_value = compact[marker_index + len(marker):]
+    else:
+        markers = list(re.finditer(r"[1-9]\.", compact))
+        if not markers:
+            return False
+        final_value = compact[markers[-1].end():]
+
+    final_value = re.sub(r"[_＿\\-—–]+", "", final_value).strip()
+    return bool(re.search(r"[0-9A-Za-z\u4e00-\u9fff]", final_value))
+
+
+def completion_status(segment):
+    actual_indexes = [idx for idx, line in enumerate(segment) if "1." in line]
+    if not actual_indexes:
+        return {"complete": False, "line": "", "expected_sets": None}
+
+    actual_index = actual_indexes[-1]
+    plan_line = segment[actual_index - 2] if actual_index >= 2 else ""
+    expected_sets = parse_expected_sets(plan_line)
+    actual_line = segment[actual_index]
+
+    return {
+        "complete": actual_line_has_final_set(actual_line, expected_sets),
+        "line": actual_line,
+        "expected_sets": expected_sets,
+    }
+
+
 def split_days(lines):
     starts = [idx for idx, line in enumerate(lines) if line.startswith("Day ")]
     segments = []
@@ -142,11 +185,21 @@ def parse_docx(docx_path, year):
     cycle = parse_cycle(lines)
     sessions = []
     records = {key: [] for key in EXERCISES}
+    skipped_incomplete = []
 
     for segment in split_days(lines):
         heading = next((line for line in segment if line.startswith("Day ")), "")
         if not heading:
             continue
+        status = completion_status(segment)
+        if not status["complete"]:
+            skipped_incomplete.append({
+                "day": heading,
+                "last_actual": status["line"],
+                "expected_sets": status["expected_sets"],
+            })
+            continue
+
         date_value = value_after_label(segment, "日期")
         iso_date = parse_short_date(date_value, year)
         if not iso_date:
@@ -178,7 +231,11 @@ def parse_docx(docx_path, year):
                 "summary": "；".join(summary_bits)
             })
 
-    return {"sessions": sessions, "exercises": records}
+    return {
+        "sessions": sessions,
+        "exercises": records,
+        "skipped_incomplete": skipped_incomplete,
+    }
 
 
 def upsert_sessions(existing, incoming):
@@ -222,6 +279,7 @@ def main():
     print(json.dumps({
         "sessions_found": len(parsed["sessions"]),
         "records_found": {key: len(rows) for key, rows in parsed["exercises"].items() if rows},
+        "skipped_incomplete": parsed.get("skipped_incomplete", []),
     }, ensure_ascii=False, indent=2))
 
     if not args.dry_run:
