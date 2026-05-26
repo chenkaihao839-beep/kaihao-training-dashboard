@@ -627,7 +627,7 @@ function workoutSummary(workout) {
     })
     .filter(Boolean)
     .slice(0, 3);
-  return highlights.length ? highlights.join("；") : "网站录入训练";
+  return highlights.length ? highlights.join("；") : "网站训练";
 }
 
 function workoutSetCount(workout) {
@@ -647,7 +647,7 @@ function appendWorkoutToTrainingData(workout) {
     bodyweight: workout.bodyweight === "" ? null : Number(workout.bodyweight),
     duration: workout.duration === "" ? null : Number(workout.duration),
     sleep: workout.sleep || "",
-    phase: "网站录入",
+    phase: "网站训练",
     summary: workoutSummary(workout)
   });
 
@@ -660,7 +660,7 @@ function appendWorkoutToTrainingData(workout) {
       workout.cycle,
       best.load,
       best.reps,
-      best.note || "网站录入"
+      best.note || "网站训练"
     ]);
   });
 
@@ -1697,7 +1697,7 @@ function renderEntryView() {
     <article class="panel entry-panel">
       <div class="panel-header">
         <div>
-          <p class="label">训练录入</p>
+          <p class="label">训练</p>
           <h3>${escapeHtml(template.day)}</h3>
         </div>
         <div class="cycle-panel-actions">
@@ -1795,7 +1795,7 @@ function renderEntryView() {
       </div>
       <p>${escapeHtml(workoutSummary(workout))}</p>
     </article>
-  `).join("") : `<p class="empty-state">还没有网站录入记录。</p>`;
+  `).join("") : `<p class="empty-state">还没有网站训练记录。</p>`;
 }
 
 function updateWorkoutDraftFromForm() {

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Kaihao Training Tracker</title>
-    <link rel="stylesheet" href="./styles.css?v=20260526-entry">
+    <link rel="stylesheet" href="./styles.css?v=20260526-mobile-fit">
   </head>
   <body>
     <div class="app-shell">
@@ -24,7 +24,7 @@
           </button>
           <button class="nav-button" type="button" data-view="entry" aria-pressed="false">
             <span class="icon">＋</span>
-            <span>录入</span>
+            <span>训练</span>
           </button>
           <button class="nav-button" type="button" data-view="progress" aria-pressed="false">
             <span class="icon">↗</span>
@@ -123,14 +123,14 @@
           </section>
         </section>
 
-        <section class="view" id="entry" aria-label="训练录入">
+        <section class="view" id="entry" aria-label="训练">
           <div class="entry-shell">
             <section class="entry-console" id="entryConsole"></section>
             <aside class="entry-history panel">
               <div class="panel-header">
                 <div>
-                  <p class="label">网站记录</p>
-                  <h3>最近录入</h3>
+                  <p class="label">网站训练</p>
+                  <h3>最近训练</h3>
                 </div>
               </div>
               <div class="entry-history-list" id="entryHistory"></div>
@@ -202,6 +202,6 @@
     </div>
 
     <script src="./data/training-data.js?v=20260525-data-split"></script>
-    <script src="./app.js?v=20260526-entry"></script>
+    <script src="./app.js?v=20260526-mobile-fit"></script>
   </body>
 </html>
