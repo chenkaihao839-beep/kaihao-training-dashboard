@@ -259,6 +259,17 @@ window.TRAINING_DATA = {
       "sleep": "8hrs8mins",
       "phase": "自动同步",
       "summary": "平板卧推 60×8"
+    },
+    {
+      "id": "web-2026-05-26-back-1779825003497",
+      "date": "2026-05-26",
+      "cycle": "Cycle 10",
+      "day": "背日 + 三头",
+      "bodyweight": 67.3,
+      "duration": null,
+      "sleep": "6h19mins",
+      "phase": "网站训练",
+      "summary": "引体向上 8次；高位下拉 53×12；单侧高位下拉 25×12"
     }
   ],
   "exercises": {
@@ -607,6 +618,13 @@ window.TRAINING_DATA = {
           0,
           7,
           "掉到 7/6/6"
+        ],
+        [
+          "2026-05-26",
+          "Cycle 10",
+          0,
+          8,
+          "蛮轻松"
         ]
       ]
     },
@@ -678,6 +696,13 @@ window.TRAINING_DATA = {
           50,
           12,
           "回归保守"
+        ],
+        [
+          "2026-05-26",
+          "Cycle 10",
+          53.0,
+          12,
+          "网站训练"
         ]
       ]
     },
