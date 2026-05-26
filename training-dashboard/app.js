@@ -44,10 +44,14 @@ const WORKOUT_TEMPLATES = [
     day: "胸日 + 二头",
     accent: "teal",
     exercises: [
-      { key: "bench", name: "平板卧推", sets: 4, target: "主项工作组", unit: "kg" },
-      { key: "incline", name: "上斜哑铃卧推", sets: 3, target: "稳定行程", unit: "kg" },
-      { key: "chestFly", name: "蝴蝶机夹胸", sets: 3, target: "收缩控制", unit: "kg" },
-      { key: "curl", name: "哑铃弯举", sets: 3, target: "二头补充", unit: "kg" }
+      { key: "benchWarmup", name: "平板卧推热身", target: "递进热身", unit: "kg", plan: [[20, 15], [40, 8], [50, 4]] },
+      { key: "bench", name: "平板卧推", target: "主项工作组", unit: "kg", plan: [[60, 8], [60, 8], [57.5, 8], [57.5, 8]] },
+      { key: "incline", name: "上斜哑铃卧推", target: "稳定行程", unit: "kg", plan: [[22.5, 10], [22.5, 10], [22.5, 10]] },
+      { key: "chestFly", name: "蝴蝶机夹胸", target: "收缩控制", unit: "kg", plan: [[55, 15], [55, 15], [55, 15]] },
+      { key: "lateralRaiseChest", name: "哑铃侧平举", target: "肩中束补充", unit: "kg", plan: [[10, 20], [10, 20], [10, 20]] },
+      { key: "curl", name: "哑铃弯举", target: "二头补充", unit: "kg", plan: [[12.5, 12], [12.5, 12], [12.5, 12]] },
+      { key: "hammerCurl", name: "锤式弯举", target: "二头补充", unit: "kg", plan: [[12.5, 12], [12.5, 12]] },
+      { key: "legRaiseChest", name: "悬垂举腿", target: "核心收尾", unit: "次", plan: [["", 15], ["", 15], ["", 15]] }
     ]
   },
   {
@@ -55,10 +59,15 @@ const WORKOUT_TEMPLATES = [
     day: "背日 + 三头",
     accent: "blue",
     exercises: [
-      { key: "pullup", name: "引体向上", sets: 3, target: "总次数优先", unit: "次" },
-      { key: "pulldown", name: "高位下拉", sets: 3, target: "垂直拉稳定", unit: "kg" },
-      { key: "row", name: "坐姿划船", sets: 3, target: "背部厚度", unit: "kg" },
-      { key: "triceps", name: "绳索下压", sets: 3, target: "三头补充", unit: "kg" }
+      { key: "pullup", name: "引体向上", target: "总次数优先", unit: "次", plan: [["", 8], ["", 8], ["", 8]] },
+      { key: "pulldown", name: "高位下拉", target: "垂直拉稳定", unit: "kg", plan: [[53, 12], [53, 12], [50, 12]] },
+      { key: "singlePulldown", name: "单侧高位下拉", target: "单侧控制", unit: "kg", plan: [[25, 12], [25, 12]] },
+      { key: "singleCableRow", name: "单侧绳索划船", target: "单侧厚度", unit: "kg", plan: [[25, 12], [25, 12], [25, 12]] },
+      { key: "row", name: "坐姿绳索划船", target: "背部厚度", unit: "kg", plan: [[47.5, 12], [45, 12], [45, 12]] },
+      { key: "facePull", name: "绳索面拉", target: "后束稳定", unit: "kg", plan: [[25, 15], [25, 15], [25, 15]] },
+      { key: "triceps", name: "绳索下压", target: "三头补充", unit: "kg", plan: [[22.5, 15], [22.5, 15], [22.5, 15]] },
+      { key: "overheadTriceps", name: "绳索过顶臂屈伸", target: "三头长头", unit: "kg", plan: [[20, 15], [20, 15]] },
+      { key: "cableCrunch", name: "绳索卷腹", target: "核心收尾", unit: "kg", plan: [[42.5, 15], [42.5, 15], [42.5, 15]] }
     ]
   },
   {
@@ -66,10 +75,15 @@ const WORKOUT_TEMPLATES = [
     day: "肩腿日 + 腹",
     accent: "coral",
     exercises: [
-      { key: "squat", name: "杠铃深蹲", sets: 3, target: "动作速度", unit: "kg" },
-      { key: "rdl", name: "罗马尼亚硬拉", sets: 3, target: "腰背可控", unit: "kg" },
-      { key: "shoulderPress", name: "坐姿哑铃推肩", sets: 3, target: "保守推进", unit: "kg" },
-      { key: "legRaise", name: "悬垂举腿", sets: 3, target: "核心收尾", unit: "次" }
+      { key: "squatWarmup", name: "深蹲热身", target: "递进热身", unit: "kg", plan: [[20, 10], [40, 8], [50, 5]] },
+      { key: "squat", name: "杠铃深蹲", target: "动作速度", unit: "kg", plan: [[67.5, 8], [65, 8], [65, 8]] },
+      { key: "rdl", name: "罗马尼亚硬拉", target: "腰背可控", unit: "kg", plan: [[52.5, 8], [52.5, 8], [50, 8]] },
+      { key: "bulgarianSplitSquat", name: "保加利亚分腿蹲", target: "单腿稳定", unit: "kg", plan: [[17.5, 12], [17.5, 12], [17.5, 12]] },
+      { key: "shoulderPress", name: "坐姿哑铃推肩", target: "保守推进", unit: "kg", plan: [[20, 12], [20, 12], [22.5, 12]] },
+      { key: "lateralRaiseLeg", name: "哑铃侧平举", target: "肩中束补充", unit: "kg", plan: [[10, 15], [10, 15]] },
+      { key: "reverseFly", name: "蝴蝶机反向飞鸟", target: "后束补充", unit: "kg", plan: [[45, 15], [45, 15], [45, 15]] },
+      { key: "deadBug", name: "死虫式", target: "核心控制", unit: "次", plan: [["", 12], ["", 12]] },
+      { key: "plank", name: "平板支撑", target: "核心收尾", unit: "秒", plan: [["", 60], ["", 60]] }
     ]
   }
 ];
@@ -78,7 +92,7 @@ const REVIEW_LOCAL_PREFIX = "kaihao-cycle-review-";
 const REVIEW_TOKEN_KEY = "kaihao-onedrive-review-token";
 const WORKOUT_LOG_KEY = "kaihao-workout-logs";
 const WORKOUT_DRAFT_KEY = "kaihao-workout-draft";
-const WORKOUT_PLAN_VERSION = "20260526-mobile-plan";
+const WORKOUT_PLAN_VERSION = "20260526-word-plan";
 let cycleReviewsCache = {};
 let workoutLogCache = { workouts: [] };
 let workoutDraft = null;
@@ -459,6 +473,10 @@ function expandSetPlan(load, reps, count) {
 }
 
 function plannedExerciseSets(exercise) {
+  if (exercise.plan?.length) {
+    return exercise.plan.map(([load, reps]) => ({ load, reps }));
+  }
+
   const goal = trainingData.exercises[exercise.key]?.goal || "";
   const latest = latestExerciseRecord(exercise.key);
   const fallbackLoad = exercise.unit === "次" ? "" : latest?.load ?? "";
@@ -501,7 +519,7 @@ function plannedExerciseSets(exercise) {
     const stableLoad = goal.match(/等\s*(\d+(?:\.\d+)?)\s*kg/);
     const firstLoad = goal.match(/(\d+(?:\.\d+)?)\s*kg/);
     const load = stableLoad?.[1] ?? firstLoad?.[1] ?? fallbackLoad;
-    return expandSetPlan(load === "" ? "" : Number(load), fallbackReps, exercise.sets);
+    return expandSetPlan(load === "" ? "" : Number(load), fallbackReps, exercise.sets || 1);
   }
 
   return plan;
@@ -512,7 +530,8 @@ function defaultExerciseSets(exercise) {
   const latest = latestExerciseRecord(exercise.key);
   const fallbackLoad = exercise.unit === "次" ? "" : latest?.load ?? "";
   const fallbackReps = latest?.reps ?? "";
-  return Array.from({ length: exercise.sets }, (_, index) => ({
+  const plannedSetCount = exercise.sets || plan.length || 1;
+  return Array.from({ length: plannedSetCount }, (_, index) => ({
     index: index + 1,
     load: plan[index]?.load ?? plan.at(-1)?.load ?? fallbackLoad,
     reps: plan[index]?.reps ?? plan.at(-1)?.reps ?? fallbackReps,
@@ -1835,7 +1854,7 @@ function renderEntryView() {
                 <div class="set-grid">
                   <span class="set-index">${setIndex + 1}</span>
                   <input type="number" inputmode="decimal" step="0.5" data-field="load" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" value="${escapeHtml(set.load)}" placeholder="${exercise.unit === "次" ? "自重" : "kg"}">
-                  <input type="number" inputmode="numeric" step="1" data-field="reps" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" value="${escapeHtml(set.reps)}" placeholder="${exercise.unit}">
+                  <input type="number" inputmode="numeric" step="1" data-field="reps" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" value="${escapeHtml(set.reps)}" placeholder="${exercise.unit === "秒" ? "秒" : "次"}">
                   <label class="done-toggle">
                     <input type="checkbox" data-field="done" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" ${set.done ? "checked" : ""}>
                     <span></span>
