@@ -1110,6 +1110,15 @@ canvas:active {
 }
 
 @media (max-width: 680px) {
+  html,
+  body,
+  .app-shell,
+  .sidebar,
+  .content {
+    min-width: 100vw;
+    max-width: 100vw;
+  }
+
   .sidebar {
     padding: 14px;
   }
@@ -1121,9 +1130,14 @@ canvas:active {
   }
 
   .topbar,
-  .toolbar {
+  .toolbar,
+  .panel-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .cycle-panel-actions {
+    justify-content: space-between;
   }
 
   h2 {
@@ -1159,13 +1173,29 @@ canvas:active {
   .panel,
   .stat-card,
   .exercise-entry-card {
+    width: 100%;
     max-width: 100%;
+  }
+
+  #entry,
+  #entry.active,
+  .entry-shell,
+  .entry-console,
+  .entry-panel,
+  .workout-form,
+  .exercise-entry-list,
+  .entry-history {
+    width: calc(100vw - 28px);
+    max-width: calc(100vw - 28px);
+    min-width: 0;
   }
 
   .entry-meta-grid input,
   .set-grid input,
-  .entry-notes textarea {
+  .entry-notes textarea,
+  .set-note {
     min-width: 0;
+    max-width: 100%;
   }
 
   .session-card {
@@ -1177,8 +1207,21 @@ canvas:active {
   }
 
   .set-grid {
-    grid-template-columns: 34px minmax(64px, 1fr) minmax(64px, 1fr) 44px;
+    grid-template-columns: 30px minmax(0, 1fr) minmax(0, 1fr) 38px;
     gap: 6px;
+  }
+
+  .set-grid-head {
+    grid-template-columns: 30px minmax(0, 1fr) minmax(0, 1fr) 38px;
+  }
+
+  .set-note {
+    grid-column: 1 / -1;
+  }
+
+  .done-toggle span {
+    width: 32px;
+    height: 32px;
   }
 
   .entry-actions {
