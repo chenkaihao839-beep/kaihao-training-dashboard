@@ -752,6 +752,10 @@ function workoutSetCount(workout) {
 function appendWorkoutToTrainingData(workout) {
   trainingData.__entryWorkoutIds = trainingData.__entryWorkoutIds || new Set();
   if (trainingData.__entryWorkoutIds.has(workout.id)) return;
+  if (trainingData.sessions.some((session) => session.id === workout.id)) {
+    trainingData.__entryWorkoutIds.add(workout.id);
+    return;
+  }
   trainingData.__entryWorkoutIds.add(workout.id);
 
   trainingData.sessions.push({

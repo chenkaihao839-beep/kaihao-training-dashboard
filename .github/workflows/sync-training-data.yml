@@ -50,6 +50,25 @@ jobs:
             --data-json training-dashboard/data/training-data.json \
             --data-js training-dashboard/data/training-data.js
 
+      - name: Download web workout logs from OneDrive
+        env:
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_CLIENT_SECRET: ${{ secrets.MS_CLIENT_SECRET }}
+          MS_REFRESH_TOKEN: ${{ secrets.MS_REFRESH_TOKEN }}
+          ONEDRIVE_WORKOUT_LOG_PATH: ${{ vars.ONEDRIVE_WORKOUT_LOG_PATH }}
+        run: |
+          python training-dashboard/scripts/download_onedrive_docx.py \
+            --onedrive-path "${ONEDRIVE_WORKOUT_LOG_PATH:-训练/training-records.json}" \
+            --output web-training-records.json \
+            --optional
+
+      - name: Merge web workout logs into dashboard data
+        run: |
+          python training-dashboard/scripts/merge_workout_logs.py \
+            --workout-log web-training-records.json \
+            --data-json training-dashboard/data/training-data.json \
+            --data-js training-dashboard/data/training-data.js
+
       - name: Commit updated training data
         run: |
           if git diff --quiet -- training-dashboard/data; then

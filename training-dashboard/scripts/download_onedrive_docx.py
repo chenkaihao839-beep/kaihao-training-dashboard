@@ -40,7 +40,7 @@ def request_access_token():
     return payload["access_token"]
 
 
-def download_file(access_token, one_drive_path, output_path):
+def download_file(access_token, one_drive_path, output_path, optional=False):
     encoded_path = urllib.parse.quote(one_drive_path.strip("/"))
     url = f"{GRAPH_ROOT}/me/drive/root:/{encoded_path}:/content"
     request = urllib.request.Request(url)
@@ -49,19 +49,25 @@ def download_file(access_token, one_drive_path, output_path):
         with urllib.request.urlopen(request) as response:
             output_path.write_bytes(response.read())
     except urllib.error.HTTPError as error:
+        if optional and error.code == 404:
+            print(f"Optional OneDrive file not found: {one_drive_path}")
+            return False
         body = error.read().decode("utf-8", errors="replace")
         raise SystemExit(f"OneDrive download failed: HTTP {error.code}\n{body}") from error
+    return True
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--onedrive-path", default=os.environ.get("ONEDRIVE_DOCX_PATH", "训练/00_当前Cycle训练记录.docx"))
     parser.add_argument("--output", default="current-training.docx", type=Path)
+    parser.add_argument("--optional", action="store_true")
     args = parser.parse_args()
 
     token = request_access_token()
-    download_file(token, args.onedrive_path, args.output)
-    print(f"Downloaded OneDrive file to {args.output}")
+    downloaded = download_file(token, args.onedrive_path, args.output, args.optional)
+    if downloaded:
+        print(f"Downloaded OneDrive file to {args.output}")
 
 
 if __name__ == "__main__":
