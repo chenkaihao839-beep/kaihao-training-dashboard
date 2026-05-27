@@ -1409,13 +1409,64 @@ function drawLineChart(canvasId, series, options = {}) {
   }
 }
 
+function renderCycleRecords() {
+  const canvas = document.getElementById("mainLiftChart");
+  const container = document.getElementById("cycleRecords");
+  const toolbar = document.querySelector(".chart-toolbar");
+  const headerLabel = canvas.closest(".panel").querySelector(".label");
+  const headerTitle = canvas.closest(".panel").querySelector("h3");
+  const keys = ["bench", "squat", "pulldown", "shoulderPress"];
+
+  if (currentCycleFilter !== "latest") {
+    canvas.hidden = false;
+    container.hidden = true;
+    if (toolbar) toolbar.style.display = "";
+    if (headerLabel) headerLabel.textContent = "主项趋势";
+    if (headerTitle) headerTitle.textContent = "卧推、深蹲、下拉、推肩";
+    return;
+  }
+
+  canvas.hidden = true;
+  container.hidden = false;
+  if (toolbar) toolbar.style.display = "none";
+  if (headerLabel) headerLabel.textContent = latestCycleName();
+  if (headerTitle) headerTitle.textContent = "当前循环记录";
+
+  container.innerHTML = keys.map((key) => {
+    const exercise = trainingData.exercises[key];
+    const records = filterRecords(key);
+    const color = colors[key];
+    const rows = records.length
+      ? records.map((r) => `
+        <div class="cycle-record-row">
+          <span class="cycle-record-date">${formatDate(r.date)}</span>
+          <strong>${r.load}kg × ${r.reps}</strong>
+          ${r.note ? `<span class="cycle-record-note">${escapeHtml(r.note)}</span>` : ""}
+        </div>
+      `).join("")
+      : '<p class="cycle-record-empty">暂无记录</p>';
+    return `
+      <div class="cycle-record-card" style="--accent: ${color}">
+        <div class="cycle-record-title">
+          <span class="cycle-record-dot" style="background: ${color}"></span>
+          ${escapeHtml(exercise.name)}
+        </div>
+        <div class="cycle-record-rows">${rows}</div>
+      </div>
+    `;
+  }).join("");
+}
+
 function renderMainLiftChart() {
+  renderCycleRecords();
+  if (currentCycleFilter === "latest") return;
+
   const mode = document.getElementById("mainChartMode").value;
   const keys = ["bench", "squat", "pulldown", "shoulderPress"];
   const series = keys.map((key) => ({
     label: trainingData.exercises[key].name,
     color: colors[key],
-    points: filterRecords(key).map((record) => ({
+    points: getRecords(key).map((record) => ({
       date: record.date,
       y: mode === "load" ? record.load : record.estimated
     }))
@@ -1423,7 +1474,7 @@ function renderMainLiftChart() {
   drawLineChart("mainLiftChart", series, {
     height: 240,
     legend: true,
-    xWindowDays: currentCycleFilter === "latest" ? 60 : 30,
+    xWindowDays: 30,
     yDomain: mode === "load" ? [15, 75] : [20, 90]
   });
 }
