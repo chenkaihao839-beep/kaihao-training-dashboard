@@ -1072,6 +1072,81 @@ canvas:active {
   font-weight: 800;
 }
 
+.cycle-records-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cycle-record-card {
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--accent, var(--teal));
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface);
+}
+
+.cycle-record-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 10px;
+  color: var(--ink);
+}
+
+.cycle-record-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cycle-record-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.cycle-record-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface-soft);
+}
+
+.cycle-record-date {
+  color: var(--muted);
+  font-size: 12px;
+  flex-shrink: 0;
+  min-width: 44px;
+}
+
+.cycle-record-row strong {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.cycle-record-note {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cycle-record-empty {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+  margin: 0;
+}
+
 @media (max-width: 1080px) {
   .app-shell {
     width: 100%;
