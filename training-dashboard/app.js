@@ -25,6 +25,7 @@ const colors = {
 
 let selectedExercise = "bench";
 let currentCycleFilter = "all";
+const CYCLE_FILTER_TITLES = { all: "全部记录", latest: "最新记录" };
 const chartStore = {};
 const ONEDRIVE_REVIEW_SYNC = {
   clientId: "2cb029da-2da0-4ba3-9a92-ce990669c646",
@@ -883,15 +884,18 @@ function generateCycleAdvice(progress, review) {
 }
 
 function renderMetrics() {
-  const latest = latestSession();
-  const benchLatest = getRecords("bench").at(-1);
+  const sessions = filteredSessions();
+  const latest = sessions.at(-1) || latestSession();
+  const cycleName = latestCycleName();
+  const isLatest = currentCycleFilter === "latest";
+  const benchLatest = filterRecords("bench").at(-1);
   const squatBest = bestRecord("squat");
-  const pullupLatest = getRecords("pullup").at(-1);
+  const pullupLatest = filterRecords("pullup").at(-1);
   const metrics = [
-    { id: "bodyweight", label: "最新体重", value: `${latest.bodyweight}kg`, note: "5.25 记录" },
-    { id: "bench", label: "卧推状态", value: `${benchLatest.load}×${benchLatest.reps}`, note: "当前工作组" },
-    { id: "squat", label: "深蹲峰值", value: `${squatBest.load}×${squatBest.reps}`, note: "Cycle 8 达成" },
-    { id: "pullup", label: "引体向上", value: `${pullupLatest.reps} 次`, note: "下一目标 8/8/8" }
+    { id: "bodyweight", label: "最新体重", value: latest?.bodyweight ? `${latest.bodyweight}kg` : "暂无数据", note: isLatest ? cycleName : "全部记录" },
+    { id: "bench", label: "卧推状态", value: benchLatest ? `${benchLatest.load}×${benchLatest.reps}` : "暂无数据", note: isLatest ? cycleName : "全部记录" },
+    { id: "squat", label: "深蹲峰值", value: squatBest ? `${squatBest.load}×${squatBest.reps}` : "暂无数据", note: isLatest ? cycleName : "全部记录" },
+    { id: "pullup", label: "引体向上", value: pullupLatest ? `${pullupLatest.reps} 次` : "暂无数据", note: isLatest ? cycleName : "全部记录" }
   ];
 
   document.getElementById("metricGrid").innerHTML = metrics.map((metric) => `
@@ -935,6 +939,12 @@ function metricLabel(record, metric, key = selectedExercise) {
 function filteredSessions() {
   if (currentCycleFilter === "latest") return trainingData.sessions.filter((item) => item.cycle === latestCycleName());
   return trainingData.sessions;
+}
+
+function filterRecords(key) {
+  const records = getRecords(key);
+  if (currentCycleFilter === "latest") return records.filter((record) => record.cycle === latestCycleName());
+  return records;
 }
 
 function toTimestamp(date) {
@@ -1405,7 +1415,7 @@ function renderMainLiftChart() {
   const series = keys.map((key) => ({
     label: trainingData.exercises[key].name,
     color: colors[key],
-    points: getRecords(key).map((record) => ({
+    points: filterRecords(key).map((record) => ({
       date: record.date,
       y: mode === "load" ? record.load : record.estimated
     }))
@@ -1413,18 +1423,18 @@ function renderMainLiftChart() {
   drawLineChart("mainLiftChart", series, {
     height: 240,
     legend: true,
-    xWindowDays: 30,
+    xWindowDays: currentCycleFilter === "latest" ? 60 : 30,
     yDomain: mode === "load" ? [15, 75] : [20, 90]
   });
 }
 
 function renderBodyweightChart() {
-  const points = trainingData.sessions
+  const points = filteredSessions()
     .filter((session) => session.bodyweight)
     .map((session) => ({ date: session.date, y: session.bodyweight }));
   drawLineChart("bodyweightChart", [{ label: "体重", color: colors.bodyweight, points }], {
     height: 240,
-    xWindowDays: 30,
+    xWindowDays: currentCycleFilter === "latest" ? 60 : 30,
     yDomain: [66, 69]
   });
 }
@@ -2028,6 +2038,9 @@ function bindEvents() {
     button.addEventListener("click", () => {
       currentCycleFilter = button.dataset.cycle;
       document.querySelectorAll(".chip").forEach((item) => item.classList.toggle("active", item === button));
+      renderMetrics();
+      renderBodyweightChart();
+      renderMainLiftChart();
       renderSessions();
     });
   });
