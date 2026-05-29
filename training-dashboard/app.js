@@ -854,6 +854,19 @@ function refreshDashboardAfterEntry() {
   redrawCharts();
 }
 
+function refreshDashboardAfterCycleReview() {
+  alignWorkoutDraftToCycleProgress();
+  renderMetrics();
+  renderWatchList();
+  renderCycleReview();
+  renderEntryView();
+  renderExerciseTabs();
+  renderSessions();
+  renderExerciseView();
+  redrawCharts();
+  resetHorizontalScroll();
+}
+
 function cycleProgress(cycle) {
   const sessions = getCycleSessions(cycle);
   const completedKeys = new Set(sessions.map((session) => classifyCycleDay(session.day)));
@@ -2346,8 +2359,7 @@ function bindEvents() {
       storeWorkoutDraft(workoutDraft);
       workoutLogState = { status: "local", message: `${nextCycleName()} 已准备好`, busy: false };
     }
-    renderCycleReview();
-    renderEntryView();
+    refreshDashboardAfterCycleReview();
   });
 
   document.getElementById("entryConsole").addEventListener("click", async (event) => {
