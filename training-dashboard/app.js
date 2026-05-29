@@ -497,13 +497,18 @@ function nextCycleName() {
   return `Cycle ${Number(match[1]) + 1}`;
 }
 
+function cycleIsReadyForNext(cycle = latestCycleName()) {
+  return Boolean(cycleProgress(cycle).isComplete && getStoredCycleReview(cycle).generatedAt);
+}
+
 function suggestedWorkoutCycle() {
   const current = latestCycleName();
-  return cycleProgress(current).isComplete ? nextCycleName() : current;
+  return cycleIsReadyForNext(current) ? nextCycleName() : current;
 }
 
 function suggestedWorkoutTemplateId() {
   const progress = cycleProgress(latestCycleName());
+  if (progress.isComplete) return WORKOUT_TEMPLATES[0].id;
   return progress.missingDays[0]?.key || WORKOUT_TEMPLATES[0].id;
 }
 
@@ -888,6 +893,87 @@ function cycleSummary(progress) {
 
 function latestCycleRecord(key, cycle) {
   return getRecords(key).filter((record) => record.cycle === cycle).at(-1);
+}
+
+function bestCycleRecord(key, cycle) {
+  const records = getRecords(key).filter((record) => record.cycle === cycle);
+  if (!records.length) return null;
+  return records.reduce((best, item) => item.estimated > best.estimated ? item : best, records[0]);
+}
+
+function previousCycleName(cycle) {
+  const match = cycle.match(/Cycle\s+(\d+)/i);
+  if (!match || Number(match[1]) <= 1) return null;
+  return `Cycle ${Number(match[1]) - 1}`;
+}
+
+function formatCycleRecord(record, key) {
+  if (!record) return "暂无";
+  if (key === "pullup") return `${record.reps} 次`;
+  return `${record.load}×${record.reps}`;
+}
+
+function cycleRecordDelta(key, cycle) {
+  const current = bestCycleRecord(key, cycle);
+  const previousCycle = previousCycleName(cycle);
+  const previous = previousCycle ? bestCycleRecord(key, previousCycle) : null;
+  if (!current) return null;
+  if (!previous) return { current, previous: null, delta: null };
+  return {
+    current,
+    previous,
+    delta: Math.round((metricValue(current, key === "pullup" ? "reps" : "estimated") - metricValue(previous, key === "pullup" ? "reps" : "estimated")) * 10) / 10
+  };
+}
+
+function generateCycleAnalysis(progress) {
+  const summary = cycleSummary(progress);
+  const completeText = progress.isComplete
+    ? `${progress.cycle} 已完成 ${progress.completedDays.length} 个训练日，可以进入复盘。`
+    : `${progress.cycle} 已完成 ${progress.completedDays.length}/${CYCLE_DAYS.length}，还差 ${progress.missingDays.map((day) => day.label).join("、")}。`;
+  const tracked = [
+    { key: "bench", label: "卧推" },
+    { key: "pullup", label: "引体" },
+    { key: "squat", label: "深蹲" },
+    { key: "shoulderPress", label: "推肩" }
+  ].map((item) => ({ ...item, result: cycleRecordDelta(item.key, progress.cycle) }));
+  const available = tracked.filter((item) => item.result?.current);
+  const improved = available
+    .filter((item) => item.result.delta !== null && item.result.delta > 0.5)
+    .map((item) => item.label);
+  const dropped = available
+    .filter((item) => item.result.delta !== null && item.result.delta < -0.5)
+    .map((item) => item.label);
+  const latestSummaries = summary.latestSummaries.length ? summary.latestSummaries.join("；") : "暂无训练摘要";
+
+  if (!progress.isComplete) {
+    return [
+      { title: "当前状态", text: completeText },
+      { title: "已记录内容", text: latestSummaries },
+      { title: "下一步", text: "先把当前循环练完整，最后一个训练日结束后再生成下轮建议。" }
+    ];
+  }
+
+  return [
+    {
+      title: "总评",
+      text: `${completeText}${summary.avgDuration ? ` 平均训练 ${summary.avgDuration} 分钟。` : ""}${summary.weightChange !== null ? ` 体重变化 ${summary.weightChange >= 0 ? "+" : ""}${summary.weightChange}kg。` : ""}`
+    },
+    {
+      title: "主项变化",
+      text: available.length
+        ? available.map((item) => `${item.label} ${formatCycleRecord(item.result.current, item.key)}`).join("；")
+        : latestSummaries
+    },
+    {
+      title: "这一轮结论",
+      text: `${improved.length ? `${improved.join("、")}有推进空间。` : "主项整体以稳定为主。"}${dropped.length ? ` ${dropped.join("、")}需要先稳住质量。` : ""}`
+    },
+    {
+      title: "下轮入口",
+      text: "先填写恢复、难度和不适，再点“生成总结并进入下一轮”。训练页会在这一步之后才切到下一 Cycle。"
+    }
+  ];
 }
 
 function generateCycleAdvice(progress, review) {
@@ -1602,12 +1688,17 @@ function renderCycleReview() {
       value: summary.weightChange === null ? "暂无" : `${summary.weightChange >= 0 ? "+" : ""}${summary.weightChange}kg`
     }
   ];
-  const advice = review.generatedAt ? generateCycleAdvice(progress, review) : [];
+  const analysis = generateCycleAnalysis(progress);
+  const effectiveReview = review.generatedAt ? review : { recovery: "3", effort: "3", pain: "1", notes: "" };
+  const advice = progress.isComplete || review.generatedAt ? generateCycleAdvice(progress, effectiveReview) : [];
   const syncAction = oneDriveActionForState(oneDriveReviewState);
   const syncDisabled = oneDriveReviewState.busy || location.protocol === "file:";
   const syncMessage = location.protocol === "file:"
     ? "线上网站可连接 OneDrive"
     : oneDriveReviewState.message;
+  const submitText = progress.isComplete
+    ? (review.generatedAt ? "更新总结和下轮建议" : "生成总结并进入下一轮")
+    : (review.generatedAt ? "更新下轮建议" : "保存当前反馈");
 
   panel.innerHTML = `
     <div class="panel-header">
@@ -1632,6 +1723,18 @@ function renderCycleReview() {
 
     <p class="cycle-note">${escapeHtml(missingText)}</p>
     <p class="cycle-sync-state ${oneDriveReviewState.status}">${escapeHtml(syncMessage)}</p>
+
+    <div class="cycle-analysis">
+      <p class="label">本轮总结</p>
+      <div class="cycle-analysis-grid">
+        ${analysis.map((item) => `
+          <section class="cycle-analysis-item">
+            <strong>${escapeHtml(item.title)}</strong>
+            <span>${escapeHtml(item.text)}</span>
+          </section>
+        `).join("")}
+      </div>
+    </div>
 
     <form class="cycle-form" id="cycleReviewForm">
       <div class="cycle-fields">
@@ -1670,7 +1773,7 @@ function renderCycleReview() {
         <span>主观记录</span>
         <textarea name="notes" rows="3" placeholder="这一轮哪里顺、哪里卡、恢复怎么样">${escapeHtml(review.notes || "")}</textarea>
       </label>
-      <button type="submit" class="primary-action">${review.generatedAt ? "更新下轮建议" : "生成下轮建议"}</button>
+      <button type="submit" class="primary-action">${submitText}</button>
     </form>
 
     <div class="cycle-advice ${advice.length ? "" : "empty"}" id="cycleAdvice">
@@ -1679,7 +1782,7 @@ function renderCycleReview() {
         <ul>
           ${advice.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
         </ul>
-      ` : `<p>完成主观反馈后，这里会生成下一轮训练方向。</p>`}
+      ` : `<p>当前循环完成后，这里会生成下一轮训练方向。</p>`}
     </div>
   `;
 }
@@ -1884,10 +1987,55 @@ function renderExerciseInsights(records, metric) {
   `).join("");
 }
 
+function renderEntryHistory(historyEl) {
+  const recent = [...(workoutLogCache.workouts || [])].reverse().slice(0, 6);
+  historyEl.innerHTML = recent.length ? recent.map((workout) => `
+    <article class="entry-history-item">
+      <div>
+        <strong>${formatDate(workout.date)} · ${escapeHtml(workout.day)}</strong>
+        <span>${escapeHtml(workout.cycle)} · ${workoutSetCount(workout)} 组</span>
+      </div>
+      <p>${escapeHtml(workoutSummary(workout))}</p>
+    </article>
+  `).join("") : `<p class="empty-state">还没有网站训练记录。</p>`;
+}
+
 function renderEntryView() {
   const consoleEl = document.getElementById("entryConsole");
   const historyEl = document.getElementById("entryHistory");
   if (!consoleEl || !historyEl) return;
+
+  const latestProgress = cycleProgress(latestCycleName());
+  const latestReview = getStoredCycleReview(latestProgress.cycle);
+  if (latestProgress.isComplete && !latestReview.generatedAt) {
+    localStorage.removeItem(WORKOUT_DRAFT_KEY);
+    workoutDraft = null;
+    consoleEl.innerHTML = `
+      <article class="panel entry-panel cycle-gate">
+        <div class="panel-header">
+          <div>
+            <p class="label">训练</p>
+            <h3>${escapeHtml(latestProgress.cycle)} 已完成</h3>
+          </div>
+          <span class="pill positive">等待复盘</span>
+        </div>
+        <p class="cycle-note">这个循环的胸日、背日、肩腿日都已经记录完成。先到总览生成本轮总结和下一轮建议，确认后训练页才会进入 ${escapeHtml(nextCycleName())}。</p>
+        <div class="cycle-analysis-grid">
+          ${generateCycleAnalysis(latestProgress).map((item) => `
+            <section class="cycle-analysis-item">
+              <strong>${escapeHtml(item.title)}</strong>
+              <span>${escapeHtml(item.text)}</span>
+            </section>
+          `).join("")}
+        </div>
+        <div class="entry-actions">
+          <button type="button" class="primary-action" data-workout-action="openReview">去总览复盘</button>
+        </div>
+      </article>
+    `;
+    renderEntryHistory(historyEl);
+    return;
+  }
 
   workoutDraft = workoutDraft || loadWorkoutDraft();
   workoutDraft.cycle = suggestedWorkoutCycle();
@@ -1997,16 +2145,7 @@ function renderEntryView() {
     </article>
   `;
 
-  const recent = [...(workoutLogCache.workouts || [])].reverse().slice(0, 6);
-  historyEl.innerHTML = recent.length ? recent.map((workout) => `
-    <article class="entry-history-item">
-      <div>
-        <strong>${formatDate(workout.date)} · ${escapeHtml(workout.day)}</strong>
-        <span>${escapeHtml(workout.cycle)} · ${workoutSetCount(workout)} 组</span>
-      </div>
-      <p>${escapeHtml(workoutSummary(workout))}</p>
-    </article>
-  `).join("") : `<p class="empty-state">还没有网站训练记录。</p>`;
+  renderEntryHistory(historyEl);
 }
 
 function updateWorkoutDraftFromForm() {
@@ -2198,10 +2337,17 @@ function bindEvents() {
     });
     if (isOneDriveConnected()) {
       await saveOneDriveReviews();
-      return;
+    } else {
+      oneDriveReviewState = { status: "local", message: "本机保存，连接 OneDrive 后可跨设备同步", busy: false };
     }
-    oneDriveReviewState = { status: "local", message: "本机保存，连接 OneDrive 后可跨设备同步", busy: false };
+    if (cycleProgress(cycle).isComplete) {
+      localStorage.removeItem(WORKOUT_DRAFT_KEY);
+      workoutDraft = createWorkoutDraft(WORKOUT_TEMPLATES[0].id);
+      storeWorkoutDraft(workoutDraft);
+      workoutLogState = { status: "local", message: `${nextCycleName()} 已准备好`, busy: false };
+    }
     renderCycleReview();
+    renderEntryView();
   });
 
   document.getElementById("entryConsole").addEventListener("click", async (event) => {
@@ -2225,6 +2371,11 @@ function bindEvents() {
     }
     if (actionButton.dataset.workoutAction === "sync") {
       await loadOneDriveWorkoutLogs();
+      return;
+    }
+    if (actionButton.dataset.workoutAction === "openReview") {
+      document.querySelector('.nav-button[data-view="overview"]')?.click();
+      document.getElementById("cycleReviewPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
     if (actionButton.dataset.workoutAction === "saveDraft") {

@@ -481,6 +481,42 @@ canvas:active {
   line-height: 1.55;
 }
 
+.cycle-analysis {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.cycle-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cycle-analysis-item {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.cycle-analysis-item strong,
+.cycle-analysis-item span {
+  display: block;
+}
+
+.cycle-analysis-item strong {
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.cycle-analysis-item span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .cycle-sync-state {
   margin: -6px 0 0;
   color: var(--muted);
@@ -712,6 +748,10 @@ canvas:active {
 .entry-panel {
   display: grid;
   gap: 14px;
+}
+
+.cycle-gate .cycle-analysis-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .template-row {
@@ -1238,6 +1278,8 @@ canvas:active {
 
   .metric-grid,
   .cycle-status,
+  .cycle-analysis-grid,
+  .cycle-gate .cycle-analysis-grid,
   .cycle-fields,
   .template-row,
   .entry-meta-grid,
