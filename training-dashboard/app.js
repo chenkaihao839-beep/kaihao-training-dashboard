@@ -278,9 +278,25 @@ function setOneDriveToken(payload) {
   return token;
 }
 
+function clearOneDriveToken() {
+  localStorage.removeItem(REVIEW_TOKEN_KEY);
+  sessionStorage.removeItem("kaihao-onedrive-code-verifier");
+  sessionStorage.removeItem("kaihao-onedrive-auth-state");
+}
+
 function isOneDriveConnected() {
   const token = getOneDriveToken();
   return Boolean(token.accessToken || token.refreshToken);
+}
+
+function oneDriveActionForState(state) {
+  if (isOneDriveConnected()) {
+    return {
+      action: state.status === "error" ? "reconnect" : "sync",
+      text: state.status === "error" ? "重新连接 OneDrive" : "同步 OneDrive"
+    };
+  }
+  return { action: "connect", text: "连接 OneDrive" };
 }
 
 async function refreshOneDriveToken() {
@@ -299,7 +315,10 @@ async function refreshOneDriveToken() {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body
   });
-  if (!response.ok) return null;
+  if (!response.ok) {
+    clearOneDriveToken();
+    return null;
+  }
   const payload = await response.json();
   return setOneDriveToken(payload).accessToken;
 }
@@ -332,8 +351,17 @@ async function startOneDriveLogin() {
 
 async function completeOneDriveLogin() {
   const params = new URLSearchParams(location.search);
+  const authError = params.get("error");
   const code = params.get("code");
   const state = params.get("state");
+  if (authError) {
+    clearOneDriveToken();
+    history.replaceState({}, document.title, oneDriveRedirectUri());
+    const message = authError === "access_denied" ? "OneDrive 授权已取消" : "OneDrive 授权失败，请重新连接";
+    oneDriveReviewState = { status: "error", message, busy: false };
+    workoutLogState = { status: "error", message, busy: false };
+    return true;
+  }
   if (!code) return false;
 
   const expectedState = sessionStorage.getItem("kaihao-onedrive-auth-state");
@@ -341,11 +369,14 @@ async function completeOneDriveLogin() {
   history.replaceState({}, document.title, oneDriveRedirectUri());
 
   if (!verifier || state !== expectedState) {
-    oneDriveReviewState = { status: "error", message: "OneDrive 登录状态不匹配", busy: false };
+    clearOneDriveToken();
+    oneDriveReviewState = { status: "error", message: "OneDrive 登录状态不匹配，请重新连接", busy: false };
+    workoutLogState = { status: "error", message: "OneDrive 登录状态不匹配，请重新连接", busy: false };
     return true;
   }
 
   oneDriveReviewState = { status: "syncing", message: "正在连接 OneDrive", busy: true };
+  workoutLogState = { status: "syncing", message: "正在连接 OneDrive", busy: true };
   const body = new URLSearchParams({
     client_id: ONEDRIVE_REVIEW_SYNC.clientId,
     grant_type: "authorization_code",
@@ -367,7 +398,9 @@ async function completeOneDriveLogin() {
     sessionStorage.removeItem("kaihao-onedrive-auth-state");
     await loadOneDriveReviews();
   } catch {
-    oneDriveReviewState = { status: "error", message: "OneDrive 授权失败", busy: false };
+    clearOneDriveToken();
+    oneDriveReviewState = { status: "error", message: "OneDrive 授权失败，请重新连接", busy: false };
+    workoutLogState = { status: "error", message: "OneDrive 授权失败，请重新连接", busy: false };
   }
   return true;
 }
@@ -410,8 +443,11 @@ async function loadOneDriveReviews() {
       return;
     }
     oneDriveReviewState = { status: "connected", message: "OneDrive 已同步", busy: false };
-  } catch {
-    oneDriveReviewState = { status: "error", message: "OneDrive 读取失败，已保存在本机", busy: false };
+  } catch (error) {
+    const message = error.message === "missing_token"
+      ? "OneDrive 登录已过期，请重新连接"
+      : "OneDrive 读取失败，已保存在本机";
+    oneDriveReviewState = { status: "error", message, busy: false };
     cycleReviewsCache = localCycleReviews();
   }
   renderCycleReview();
@@ -437,8 +473,11 @@ async function saveOneDriveReviews() {
     });
     if (!response.ok) throw new Error("onedrive_write_failed");
     oneDriveReviewState = { status: "connected", message: "OneDrive 已同步", busy: false };
-  } catch {
-    oneDriveReviewState = { status: "error", message: "OneDrive 同步失败，已保存在本机", busy: false };
+  } catch (error) {
+    const message = error.message === "missing_token"
+      ? "OneDrive 登录已过期，请重新连接"
+      : "OneDrive 同步失败，已保存在本机";
+    oneDriveReviewState = { status: "error", message, busy: false };
   }
   renderCycleReview();
 }
@@ -679,8 +718,11 @@ async function loadOneDriveWorkoutLogs() {
       return;
     }
     workoutLogState = { status: "connected", message: "OneDrive 已同步", busy: false };
-  } catch {
-    workoutLogState = { status: "error", message: "OneDrive 读取失败，已保存在本机", busy: false };
+  } catch (error) {
+    const message = error.message === "missing_token"
+      ? "OneDrive 登录已过期，请重新连接"
+      : "OneDrive 读取失败，已保存在本机";
+    workoutLogState = { status: "error", message, busy: false };
     workoutLogCache = localWorkoutLogs();
   }
   renderEntryView();
@@ -706,8 +748,11 @@ async function saveOneDriveWorkoutLogs() {
     });
     if (!response.ok) throw new Error("workout_log_write_failed");
     workoutLogState = { status: "connected", message: "OneDrive 已同步", busy: false };
-  } catch {
-    workoutLogState = { status: "error", message: "OneDrive 同步失败，已保存在本机", busy: false };
+  } catch (error) {
+    const message = error.message === "missing_token"
+      ? "OneDrive 登录已过期，请重新连接"
+      : "OneDrive 同步失败，已保存在本机";
+    workoutLogState = { status: "error", message, busy: false };
   }
   renderEntryView();
 }
@@ -1558,7 +1603,7 @@ function renderCycleReview() {
     }
   ];
   const advice = review.generatedAt ? generateCycleAdvice(progress, review) : [];
-  const syncButtonText = isOneDriveConnected() ? "同步 OneDrive" : "连接 OneDrive";
+  const syncAction = oneDriveActionForState(oneDriveReviewState);
   const syncDisabled = oneDriveReviewState.busy || location.protocol === "file:";
   const syncMessage = location.protocol === "file:"
     ? "线上网站可连接 OneDrive"
@@ -1572,7 +1617,7 @@ function renderCycleReview() {
       </div>
       <div class="cycle-panel-actions">
         <span class="pill ${progress.isComplete ? "positive" : ""}">${progress.isComplete ? "可总结" : "未完成"}</span>
-        <button type="button" class="sync-action" data-onedrive-action="${isOneDriveConnected() ? "sync" : "connect"}" ${syncDisabled ? "disabled" : ""}>${syncButtonText}</button>
+        <button type="button" class="sync-action" data-onedrive-action="${syncAction.action}" ${syncDisabled ? "disabled" : ""}>${syncAction.text}</button>
       </div>
     </div>
 
@@ -1851,7 +1896,7 @@ function renderEntryView() {
     return total + exercise.sets.filter((set) => set.done).length;
   }, 0);
   const totalSetCount = workoutDraft.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
-  const syncButtonText = isOneDriveConnected() ? "同步 OneDrive" : "连接 OneDrive";
+  const syncAction = oneDriveActionForState(workoutLogState);
   const syncDisabled = workoutLogState.busy || location.protocol === "file:";
   const syncMessage = location.protocol === "file:"
     ? "线上网站可连接 OneDrive"
@@ -1866,7 +1911,7 @@ function renderEntryView() {
         </div>
         <div class="cycle-panel-actions">
           <span class="pill">${completedSetCount}/${totalSetCount} 组</span>
-          <button type="button" class="sync-action" data-workout-action="${isOneDriveConnected() ? "sync" : "connect"}" ${syncDisabled ? "disabled" : ""}>${syncButtonText}</button>
+          <button type="button" class="sync-action" data-workout-action="${syncAction.action}" ${syncDisabled ? "disabled" : ""}>${syncAction.text}</button>
         </div>
       </div>
 
@@ -2129,6 +2174,11 @@ function bindEvents() {
       await startOneDriveLogin();
       return;
     }
+    if (button.dataset.onedriveAction === "reconnect") {
+      clearOneDriveToken();
+      await startOneDriveLogin();
+      return;
+    }
     if (button.dataset.onedriveAction === "sync") {
       await loadOneDriveReviews();
     }
@@ -2165,6 +2215,11 @@ function bindEvents() {
     if (!actionButton) return;
 
     if (actionButton.dataset.workoutAction === "connect") {
+      await startOneDriveLogin();
+      return;
+    }
+    if (actionButton.dataset.workoutAction === "reconnect") {
+      clearOneDriveToken();
       await startOneDriveLogin();
       return;
     }
