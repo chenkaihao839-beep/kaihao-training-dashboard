@@ -91,6 +91,7 @@ const WORKOUT_TEMPLATES = [
 const TRACKED_EXERCISE_KEYS = new Set(["bench", "incline", "squat", "rdl", "pullup", "pulldown", "shoulderPress"]);
 const REVIEW_LOCAL_PREFIX = "kaihao-cycle-review-";
 const REVIEW_TOKEN_KEY = "kaihao-onedrive-review-token";
+const ONEDRIVE_AUTH_KEY = "kaihao-onedrive-auth-transaction";
 const WORKOUT_LOG_KEY = "kaihao-workout-logs";
 const WORKOUT_DRAFT_KEY = "kaihao-workout-draft";
 const WORKOUT_PLAN_VERSION = "20260526-word-plan";
@@ -212,7 +213,8 @@ function persistCycleReviews(reviews) {
 }
 
 function oneDriveRedirectUri() {
-  return `${location.origin}${location.pathname}`;
+  const canonicalPath = location.pathname.replace(/\/index\.html$/i, "/");
+  return `${location.origin}${canonicalPath.endsWith("/") ? canonicalPath : `${canonicalPath}/`}`;
 }
 
 function oneDriveTokenUrl() {
@@ -280,8 +282,63 @@ function setOneDriveToken(payload) {
 
 function clearOneDriveToken() {
   localStorage.removeItem(REVIEW_TOKEN_KEY);
+  localStorage.removeItem(ONEDRIVE_AUTH_KEY);
   sessionStorage.removeItem("kaihao-onedrive-code-verifier");
   sessionStorage.removeItem("kaihao-onedrive-auth-state");
+}
+
+function storeOneDriveAuthTransaction(verifier, state) {
+  const transaction = {
+    verifier,
+    state,
+    expiresAt: Date.now() + 10 * 60 * 1000
+  };
+  sessionStorage.setItem("kaihao-onedrive-code-verifier", verifier);
+  sessionStorage.setItem("kaihao-onedrive-auth-state", state);
+  sessionStorage.setItem("kaihao-onedrive-auth-expires-at", String(transaction.expiresAt));
+  localStorage.setItem(ONEDRIVE_AUTH_KEY, JSON.stringify(transaction));
+}
+
+function getOneDriveAuthTransaction() {
+  let transaction = {
+    verifier: sessionStorage.getItem("kaihao-onedrive-code-verifier"),
+    state: sessionStorage.getItem("kaihao-onedrive-auth-state"),
+    expiresAt: sessionStorage.getItem("kaihao-onedrive-auth-expires-at")
+  };
+
+  if (!transaction.verifier || !transaction.state) {
+    try {
+      transaction = JSON.parse(localStorage.getItem(ONEDRIVE_AUTH_KEY) || "{}");
+    } catch {
+      transaction = {};
+    }
+  }
+
+  if (!transaction.verifier || !transaction.state || Date.now() > Number(transaction.expiresAt || 0)) {
+    localStorage.removeItem(ONEDRIVE_AUTH_KEY);
+    return {};
+  }
+  return transaction;
+}
+
+function clearOneDriveAuthTransaction() {
+  localStorage.removeItem(ONEDRIVE_AUTH_KEY);
+  sessionStorage.removeItem("kaihao-onedrive-code-verifier");
+  sessionStorage.removeItem("kaihao-onedrive-auth-state");
+  sessionStorage.removeItem("kaihao-onedrive-auth-expires-at");
+}
+
+async function oneDriveTokenErrorMessage(response) {
+  try {
+    const payload = await response.json();
+    const description = payload.error_description || payload.error || "";
+    if (description.includes("AADSTS7000218")) {
+      return "OneDrive 授权失败：Azure 回调地址需要配置为单页应用 SPA";
+    }
+    return description.split("\r\n")[0] || "OneDrive 授权失败，请重新连接";
+  } catch {
+    return "OneDrive 授权失败，请重新连接";
+  }
 }
 
 function isOneDriveConnected() {
@@ -333,8 +390,7 @@ async function startOneDriveLogin() {
   const verifier = randomCodeVerifier();
   const challenge = await codeChallenge(verifier);
   const state = randomCodeVerifier();
-  sessionStorage.setItem("kaihao-onedrive-code-verifier", verifier);
-  sessionStorage.setItem("kaihao-onedrive-auth-state", state);
+  storeOneDriveAuthTransaction(verifier, state);
 
   const params = new URLSearchParams({
     client_id: ONEDRIVE_REVIEW_SYNC.clientId,
@@ -364,12 +420,13 @@ async function completeOneDriveLogin() {
   }
   if (!code) return false;
 
-  const expectedState = sessionStorage.getItem("kaihao-onedrive-auth-state");
-  const verifier = sessionStorage.getItem("kaihao-onedrive-code-verifier");
+  const transaction = getOneDriveAuthTransaction();
+  const expectedState = transaction.state;
+  const verifier = transaction.verifier;
   history.replaceState({}, document.title, oneDriveRedirectUri());
 
   if (!verifier || state !== expectedState) {
-    clearOneDriveToken();
+    clearOneDriveAuthTransaction();
     oneDriveReviewState = { status: "error", message: "OneDrive 登录状态不匹配，请重新连接", busy: false };
     workoutLogState = { status: "error", message: "OneDrive 登录状态不匹配，请重新连接", busy: false };
     return true;
@@ -392,15 +449,17 @@ async function completeOneDriveLogin() {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body
     });
-    if (!response.ok) throw new Error("token_exchange_failed");
+    if (!response.ok) throw new Error(await oneDriveTokenErrorMessage(response));
     setOneDriveToken(await response.json());
-    sessionStorage.removeItem("kaihao-onedrive-code-verifier");
-    sessionStorage.removeItem("kaihao-onedrive-auth-state");
+    clearOneDriveAuthTransaction();
     await loadOneDriveReviews();
-  } catch {
+  } catch (error) {
     clearOneDriveToken();
-    oneDriveReviewState = { status: "error", message: "OneDrive 授权失败，请重新连接", busy: false };
-    workoutLogState = { status: "error", message: "OneDrive 授权失败，请重新连接", busy: false };
+    const message = error.message === "Failed to fetch"
+      ? "OneDrive 授权失败：请确认 Azure 回调类型为单页应用 SPA"
+      : error.message || "OneDrive 授权失败，请重新连接";
+    oneDriveReviewState = { status: "error", message, busy: false };
+    workoutLogState = { status: "error", message, busy: false };
   }
   return true;
 }
