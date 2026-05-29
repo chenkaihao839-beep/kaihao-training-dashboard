@@ -494,6 +494,10 @@ canvas:active {
   gap: 10px;
 }
 
+.cycle-analysis-grid.coach-summary {
+  grid-template-columns: 1fr;
+}
+
 .cycle-analysis-item {
   padding: 12px;
   border: 1px solid var(--line);

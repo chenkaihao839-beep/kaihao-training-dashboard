@@ -963,6 +963,19 @@ function cycleSummary(progress) {
   };
 }
 
+function cycleReviewScore(progress, review) {
+  if (!progress.isComplete) return null;
+  const recovery = Number(review.recovery || 3);
+  const effort = Number(review.effort || 3);
+  const pain = Number(review.pain || 1);
+  let score = 8.1;
+  score += Math.max(-0.4, Math.min(0.5, (recovery - 3) * 0.18));
+  score -= Math.max(0, effort - 3) * 0.12;
+  score -= Math.max(0, pain - 1) * 0.18;
+  score += progress.completedDays.length === CYCLE_DAYS.length ? 0.25 : 0;
+  return Math.max(6.8, Math.min(9.3, Math.round(score * 10) / 10)).toFixed(1);
+}
+
 function latestCycleRecord(key, cycle) {
   return getRecords(key).filter((record) => record.cycle === cycle).at(-1);
 }
@@ -998,17 +1011,38 @@ function cycleRecordDelta(key, cycle) {
   };
 }
 
-function generateCycleAnalysis(progress) {
-  const summary = cycleSummary(progress);
-  const completeText = progress.isComplete
-    ? `${progress.cycle} 已完成 ${progress.completedDays.length} 个训练日，可以进入复盘。`
-    : `${progress.cycle} 已完成 ${progress.completedDays.length}/${CYCLE_DAYS.length}，还差 ${progress.missingDays.map((day) => day.label).join("、")}。`;
-  const tracked = [
+function cycleRecordResults(progress) {
+  return [
     { key: "bench", label: "卧推" },
     { key: "pullup", label: "引体" },
     { key: "squat", label: "深蹲" },
     { key: "shoulderPress", label: "推肩" }
   ].map((item) => ({ ...item, result: cycleRecordDelta(item.key, progress.cycle) }));
+}
+
+function cycleRecordLine(item) {
+  if (!item.result?.current) return "";
+  const current = formatCycleRecord(item.result.current, item.key);
+  if (item.result.delta === null) return `${item.label}本轮最好记录是 ${current}`;
+  if (item.result.delta > 0.5) return `${item.label}做到 ${current}，比上轮有推进`;
+  if (item.result.delta < -0.5) return `${item.label}本轮是 ${current}，比上轮回落，需要先稳住`;
+  return `${item.label}本轮是 ${current}，和上轮基本持平`;
+}
+
+function dayReviewLines(progress) {
+  return progress.sessions.map((session) => {
+    const duration = Number.isFinite(session.duration) ? `，时长 ${session.duration} 分钟` : "";
+    const bodyweight = Number.isFinite(session.bodyweight) ? `，体重 ${session.bodyweight}kg` : "";
+    return `${session.day}：${session.summary || "已完成记录"}${duration}${bodyweight}。`;
+  });
+}
+
+function generateCycleAnalysis(progress, review = {}) {
+  const summary = cycleSummary(progress);
+  const completeText = progress.isComplete
+    ? `${progress.cycle} 已完成 ${progress.completedDays.length} 个训练日，可以进入复盘。`
+    : `${progress.cycle} 已完成 ${progress.completedDays.length}/${CYCLE_DAYS.length}，还差 ${progress.missingDays.map((day) => day.label).join("、")}。`;
+  const tracked = cycleRecordResults(progress);
   const available = tracked.filter((item) => item.result?.current);
   const improved = available
     .filter((item) => item.result.delta !== null && item.result.delta > 0.5)
@@ -1023,6 +1057,56 @@ function generateCycleAnalysis(progress) {
       { title: "当前状态", text: completeText },
       { title: "已记录内容", text: latestSummaries },
       { title: "下一步", text: "先把当前循环练完整，最后一个训练日结束后再生成下轮建议。" }
+    ];
+  }
+
+  if (review.generatedAt) {
+    const score = cycleReviewScore(progress, review);
+    const recovery = Number(review.recovery || 3);
+    const effort = Number(review.effort || 3);
+    const pain = Number(review.pain || 1);
+    const recordLines = available.map(cycleRecordLine).filter(Boolean);
+    const dayLines = dayReviewLines(progress);
+    const strongParts = [];
+    if (improved.length) strongParts.push(`${improved.join("、")}有明确推进空间`);
+    if (!dropped.length) strongParts.push("本轮没有明显崩盘的主项");
+    if (recovery >= 4) strongParts.push("恢复反馈不错，可以承接下一轮训练");
+    if (!strongParts.length) strongParts.push("三天训练结构完整，主线没有断");
+
+    const weakParts = [];
+    if (dropped.length) weakParts.push(`${dropped.join("、")}需要先把动作质量和次数稳回来`);
+    if (effort >= 4) weakParts.push("主观难度偏高，下轮不适合所有动作一起加");
+    if (pain >= 3) weakParts.push("有明显不适信号，下轮要优先保守处理");
+    if (!weakParts.length) weakParts.push("主要问题不是退步，而是下轮加重量要有选择，不要全线硬冲");
+
+    const notes = String(review.notes || "").trim();
+    const direction = generateCycleAdvice(progress, review)[0] || "下轮保持当前结构，主项小幅推进，辅助动作以稳定完成为主。";
+
+    return [
+      {
+        title: "总评",
+        text: `${score}/10。${progress.cycle} 是一个完整有效的训练循环。${completeText}${summary.avgDuration ? ` 平均训练 ${summary.avgDuration} 分钟。` : ""}${summary.weightChange !== null ? ` 体重变化 ${summary.weightChange >= 0 ? "+" : ""}${summary.weightChange}kg。` : ""}`
+      },
+      {
+        title: "做得好的地方",
+        text: strongParts.join("；") + "。"
+      },
+      {
+        title: "做得不够好的地方",
+        text: weakParts.join("；") + "。"
+      },
+      {
+        title: "按训练日看",
+        text: dayLines.length ? dayLines.join(" ") : latestSummaries
+      },
+      {
+        title: "主项判断",
+        text: recordLines.length ? `${recordLines.join("；")}。` : latestSummaries
+      },
+      {
+        title: "这一轮最重要的结论",
+        text: `${direction}${notes ? ` 你的主观记录是：“${notes}”，下轮会按这个反馈处理。` : ""}`
+      }
     ];
   }
 
@@ -1057,27 +1141,31 @@ function generateCycleAdvice(progress, review) {
   const bench = latestCycleRecord("bench", progress.cycle);
   const pullup = latestCycleRecord("pullup", progress.cycle);
   const squat = latestCycleRecord("squat", progress.cycle);
+  const shoulderPress = latestCycleRecord("shoulderPress", progress.cycle);
 
   if (!progress.isComplete) {
     advice.push(`当前 ${progress.cycle} 还差 ${progress.missingDays.map((day) => day.label).join("、")}，先把这个 Cycle 练完整，再最终确定下轮加重量。`);
   }
 
   if (pain >= 4 || recovery <= 2) {
-    advice.push("下一个 Cycle 先保守：主项保持当前重量，少做力竭组，把动作速度和恢复感拉回来。");
+    advice.push("下轮方向：先保守。主项保持当前重量，少做力竭组，把动作速度和恢复感拉回来。");
   } else if (effort <= 3 && recovery >= 4 && progress.isComplete) {
-    advice.push("下一个 Cycle 可以小幅推进：稳定完成的主项加 2.5kg，或者在同重量下先补 1-2 次。");
+    advice.push("下轮方向：正常推进。稳定完成的主项可以加 2.5kg，边界动作先在同重量下补 1-2 次。");
   } else {
-    advice.push("下一个 Cycle 维持渐进：主项先按本轮重量开局，只有当天热身和第一组都顺，再加一点。");
+    advice.push("下轮方向：稳中推进。主项先按本轮重量开局，只有当天热身和第一组都顺，再小幅上探。");
   }
 
   if (bench) {
-    advice.push(`卧推参考：本轮最新是 ${bench.load}×${bench.reps}。如果第二组仍有明显粘滞，继续稳 60kg；如果很干净，再安排 62.5kg 上探。`);
+    advice.push(`胸日：卧推参考本轮 ${bench.load}×${bench.reps}。如果前两组干净，再安排 62.5kg 上探；如果有粘滞，继续稳 60kg。`);
   }
   if (pullup) {
-    advice.push(`引体参考：本轮最新是 ${pullup.reps} 次。下一轮优先把总次数补回来，不急着给下拉加重量。`);
+    advice.push(`背日：引体参考本轮 ${pullup.reps} 次。下一轮优先把总次数补回来，不急着给下拉继续加重量。`);
   }
   if (squat) {
-    advice.push(`深蹲参考：本轮最新是 ${squat.load}×${squat.reps}。腰背感觉正常再推进，否则保持并提高动作质量。`);
+    advice.push(`肩腿日：深蹲参考本轮 ${squat.load}×${squat.reps}。腰背感觉正常再推进，否则保持并提高动作质量。`);
+  }
+  if (shoulderPress) {
+    advice.push(`推肩：本轮 ${shoulderPress.load}×${shoulderPress.reps}。这个动作更吃连续状态，下轮先把目标次数做成熟，再考虑加重量。`);
   }
   if (summary.weightChange !== null) {
     advice.push(`体重参考：本轮记录变化 ${summary.weightChange >= 0 ? "+" : ""}${summary.weightChange}kg。训练表现上升时，这个方向是可以接受的。`);
@@ -1760,9 +1848,9 @@ function renderCycleReview() {
       value: summary.weightChange === null ? "暂无" : `${summary.weightChange >= 0 ? "+" : ""}${summary.weightChange}kg`
     }
   ];
-  const analysis = generateCycleAnalysis(progress);
+  const analysis = generateCycleAnalysis(progress, review);
   const effectiveReview = review.generatedAt ? review : { recovery: "3", effort: "3", pain: "1", notes: "" };
-  const advice = progress.isComplete || review.generatedAt ? generateCycleAdvice(progress, effectiveReview) : [];
+  const advice = review.generatedAt ? generateCycleAdvice(progress, effectiveReview) : [];
   const syncAction = oneDriveActionForState(oneDriveReviewState);
   const syncDisabled = oneDriveReviewState.busy || location.protocol === "file:";
   const syncMessage = location.protocol === "file:"
@@ -1797,8 +1885,8 @@ function renderCycleReview() {
     <p class="cycle-sync-state ${oneDriveReviewState.status}">${escapeHtml(syncMessage)}</p>
 
     <div class="cycle-analysis">
-      <p class="label">本轮总结</p>
-      <div class="cycle-analysis-grid">
+      <p class="label">${review.generatedAt ? "本轮总结" : "本轮状态"}</p>
+      <div class="cycle-analysis-grid ${review.generatedAt ? "coach-summary" : ""}">
         ${analysis.map((item) => `
           <section class="cycle-analysis-item">
             <strong>${escapeHtml(item.title)}</strong>
@@ -1854,7 +1942,7 @@ function renderCycleReview() {
         <ul>
           ${advice.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
         </ul>
-      ` : `<p>当前循环完成后，这里会生成下一轮训练方向。</p>`}
+      ` : `<p>${progress.isComplete ? "点击生成后，这里会直接显示下一轮训练方向。" : "当前循环完成后，这里会生成下一轮训练方向。"}</p>`}
     </div>
   `;
 }
@@ -2399,20 +2487,22 @@ function bindEvents() {
     if (event.target.id !== "cycleReviewForm") return;
     event.preventDefault();
     const cycle = latestCycleName();
+    const progress = cycleProgress(cycle);
+    const now = new Date().toISOString();
     const formData = new FormData(event.target);
     storeCycleReview(cycle, {
       recovery: formData.get("recovery"),
       effort: formData.get("effort"),
       pain: formData.get("pain"),
       notes: formData.get("notes"),
-      generatedAt: new Date().toISOString()
+      ...(progress.isComplete ? { generatedAt: now } : { feedbackAt: now })
     });
     if (isOneDriveConnected()) {
       await saveOneDriveReviews();
     } else {
       oneDriveReviewState = { status: "local", message: "本机保存，连接 OneDrive 后可跨设备同步", busy: false };
     }
-    if (cycleProgress(cycle).isComplete) {
+    if (progress.isComplete) {
       localStorage.removeItem(WORKOUT_DRAFT_KEY);
       workoutDraft = createWorkoutDraft(WORKOUT_TEMPLATES[0].id);
       storeWorkoutDraft(workoutDraft);
