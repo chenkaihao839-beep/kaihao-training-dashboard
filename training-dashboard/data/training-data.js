@@ -270,6 +270,83 @@ window.TRAINING_DATA = {
       "sleep": "6h19mins",
       "phase": "网站训练",
       "summary": "引体向上 8次；高位下拉 53×12；单侧高位下拉 25×12"
+    },
+    {
+      "id": "web-2026-05-26-shoulderLeg-1780064123256",
+      "date": "2026-05-26",
+      "cycle": "Cycle 11",
+      "day": "肩腿日 + 腹",
+      "bodyweight": 66.9,
+      "duration": null,
+      "sleep": "13hrs30mins",
+      "phase": "网站训练",
+      "summary": "深蹲热身 50×6；杠铃深蹲 67.5×8；罗马尼亚硬拉 52.5×8"
+    },
+    {
+      "id": "web-2026-05-26-shoulderLeg-1780064123105",
+      "date": "2026-05-26",
+      "cycle": "Cycle 11",
+      "day": "肩腿日 + 腹",
+      "bodyweight": 66.9,
+      "duration": null,
+      "sleep": "13hrs30mins",
+      "phase": "网站训练",
+      "summary": "深蹲热身 50×6；杠铃深蹲 67.5×8；罗马尼亚硬拉 52.5×8"
+    },
+    {
+      "id": "web-2026-05-26-shoulderLeg-1780064122938",
+      "date": "2026-05-26",
+      "cycle": "Cycle 11",
+      "day": "肩腿日 + 腹",
+      "bodyweight": 66.9,
+      "duration": null,
+      "sleep": "13hrs30mins",
+      "phase": "网站训练",
+      "summary": "深蹲热身 50×6；杠铃深蹲 67.5×8；罗马尼亚硬拉 52.5×8"
+    },
+    {
+      "id": "web-2026-05-26-shoulderLeg-1780064122188",
+      "date": "2026-05-26",
+      "cycle": "Cycle 11",
+      "day": "肩腿日 + 腹",
+      "bodyweight": 66.9,
+      "duration": null,
+      "sleep": "13hrs30mins",
+      "phase": "网站训练",
+      "summary": "深蹲热身 50×6；杠铃深蹲 67.5×8；罗马尼亚硬拉 52.5×8"
+    },
+    {
+      "id": "web-2026-05-26-shoulderLeg-1780064121807",
+      "date": "2026-05-26",
+      "cycle": "Cycle 11",
+      "day": "肩腿日 + 腹",
+      "bodyweight": 66.9,
+      "duration": null,
+      "sleep": "13hrs30mins",
+      "phase": "网站训练",
+      "summary": "深蹲热身 50×6；杠铃深蹲 67.5×8；罗马尼亚硬拉 52.5×8"
+    },
+    {
+      "id": "web-2026-05-26-shoulderLeg-1780064119641",
+      "date": "2026-05-26",
+      "cycle": "Cycle 11",
+      "day": "肩腿日 + 腹",
+      "bodyweight": 66.9,
+      "duration": null,
+      "sleep": "13hrs30mins",
+      "phase": "网站训练",
+      "summary": "深蹲热身 50×6；杠铃深蹲 67.5×8；罗马尼亚硬拉 52.5×8"
+    },
+    {
+      "id": "web-2026-05-26-shoulderLeg-1780064111802",
+      "date": "2026-05-26",
+      "cycle": "Cycle 10",
+      "day": "肩腿日 + 腹",
+      "bodyweight": 66.9,
+      "duration": null,
+      "sleep": "13hrs30mins",
+      "phase": "网站训练",
+      "summary": "深蹲热身 50×6；杠铃深蹲 67.5×8；罗马尼亚硬拉 52.5×8"
     }
   ],
   "exercises": {
@@ -490,6 +567,20 @@ window.TRAINING_DATA = {
           65,
           8,
           "回归后 65/62.5/60"
+        ],
+        [
+          "2026-05-26",
+          "Cycle 11",
+          67.5,
+          8,
+          "蛮吃力"
+        ],
+        [
+          "2026-05-26",
+          "Cycle 10",
+          67.5,
+          8,
+          "蛮吃力"
         ]
       ]
     },
@@ -547,6 +638,20 @@ window.TRAINING_DATA = {
           50,
           8,
           "回归后三组 8 次"
+        ],
+        [
+          "2026-05-26",
+          "Cycle 11",
+          52.5,
+          8,
+          "网站训练"
+        ],
+        [
+          "2026-05-26",
+          "Cycle 10",
+          52.5,
+          8,
+          "网站训练"
         ]
       ]
     },
